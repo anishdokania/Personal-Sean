@@ -8,23 +8,29 @@ blueprint-inspired filters. Deeper technical analysis belongs in Module 4.
 from __future__ import annotations
 
 from io import StringIO
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import pandas as pd
 import requests
 
 from data_fetcher import fetch_stock_data, validate_ohlcv
 from sector_scanner import get_top_sectors
+from universe import load_us_listed_universe
 
 
 SP500_WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 UNIVERSE_COLUMNS = ["Symbol", "Security", "GICS Sector"]
+MIN_PRICE = 3
+MIN_AVG_VOLUME = 500_000
+MIN_DOLLAR_VOLUME = 20_000_000
 CANDIDATE_COLUMNS = [
     "Symbol",
     "Company",
     "Sector",
+    "Exchange",
     "Close",
     "AvgVolume20",
+    "DollarVolume20",
     "SMA20",
     "AboveSMA20",
 ]
@@ -52,6 +58,14 @@ def _empty_candidates() -> pd.DataFrame:
 def _normalize_symbol(symbol: str) -> str:
     """Convert Wikipedia symbols into yfinance-compatible symbols."""
     return str(symbol).strip().replace(".", "-")
+
+
+def _clean_text_field(value: Any) -> str:
+    """Return a clean string for optional universe metadata fields."""
+    if value is None or pd.isna(value):
+        return ""
+
+    return str(value).strip()
 
 
 def load_sp500_universe() -> pd.DataFrame:
@@ -138,10 +152,12 @@ def _calculate_basic_metrics(df: pd.DataFrame) -> Dict[str, BasicMetricValue]:
     latest_close = float(closes.iloc[-1])
     sma20 = float(closes.tail(20).mean())
     avg_volume20 = float(volumes.tail(20).mean())
+    dollar_volume20 = latest_close * avg_volume20
 
     return {
         "Close": latest_close,
         "AvgVolume20": avg_volume20,
+        "DollarVolume20": dollar_volume20,
         "SMA20": sma20,
         "AboveSMA20": bool(latest_close > sma20),
     }
@@ -162,8 +178,28 @@ def passes_basic_filters(df: pd.DataFrame) -> bool:
         return False
 
     return bool(
-        metrics["Close"] > 3
-        and metrics["AvgVolume20"] > 500_000
+        metrics["Close"] > MIN_PRICE
+        and metrics["AvgVolume20"] > MIN_AVG_VOLUME
+        and metrics["AboveSMA20"]
+    )
+
+
+def passes_broad_universe_filters(df: pd.DataFrame) -> bool:
+    """
+    Apply broad-universe tradability filters.
+
+    Adds a dollar-volume floor so low-priced or thinly traded symbols are not
+    expensive downstream candidates.
+    """
+    try:
+        metrics = _calculate_basic_metrics(df)
+    except Exception:
+        return False
+
+    return bool(
+        metrics["Close"] > MIN_PRICE
+        and metrics["AvgVolume20"] > MIN_AVG_VOLUME
+        and metrics["DollarVolume20"] > MIN_DOLLAR_VOLUME
         and metrics["AboveSMA20"]
     )
 
@@ -185,45 +221,54 @@ def _limit_stocks_per_sector(
     )
 
 
-def scan_candidates(
-    top_n_sectors: int = 5, max_stocks_per_sector: Optional[int] = None
-) -> pd.DataFrame:
-    """
-    Scan S&P 500 stocks from the strongest sectors for basic candidates.
-
-    Returns a DataFrame sorted by 20-day average volume descending.
-    """
-    universe = load_sp500_universe()
-    if universe.empty:
-        return _empty_candidates()
-
-    top_sector_ranking = get_top_sectors(top_n_sectors)
-    if top_sector_ranking.empty:
-        print("No top sectors available. Candidate scan stopped.", flush=True)
-        return _empty_candidates()
-
-    top_sector_names = top_sector_ranking["Sector"].tolist()
-    stocks_to_scan = filter_by_top_sectors(universe, top_sector_names)
-    stocks_to_scan = _limit_stocks_per_sector(stocks_to_scan, max_stocks_per_sector)
-
-    if stocks_to_scan.empty:
-        print("No S&P 500 stocks matched the selected top sectors.", flush=True)
-        return _empty_candidates()
-
+def _scan_symbol_rows(
+    stocks_to_scan: pd.DataFrame,
+    universe_mode: str,
+    apply_basic_filters: bool = False,
+) -> tuple[List[Dict[str, CandidateValue]], Dict[str, str]]:
+    """Load normalized symbol rows, optionally applying legacy light filters."""
     candidates: List[Dict[str, CandidateValue]] = []
     failures: Dict[str, str] = {}
+    total_count = len(stocks_to_scan)
 
-    for _, stock in stocks_to_scan.iterrows():
-        symbol = str(stock["Symbol"])
-        company = str(stock["Security"])
-        sector = str(stock["GICS Sector"])
+    for idx, stock in stocks_to_scan.iterrows():
+        symbol = str(stock.get("Symbol", "")).strip()
+        if not symbol:
+            continue
 
-        print(f"Scanning {symbol}...", flush=True)
+        company = (
+            _clean_text_field(stock.get("Security"))
+            or _clean_text_field(stock.get("Company"))
+            or _clean_text_field(stock.get("RawSecurityName"))
+        )
+        sector = _clean_text_field(stock.get("GICS Sector")) or _clean_text_field(
+            stock.get("Sector")
+        )
+        exchange = _clean_text_field(stock.get("Exchange"))
+
+        if universe_mode == "us_listed":
+            print(f"Scanning {idx + 1}/{total_count} {symbol}...", flush=True)
+        else:
+            print(f"Scanning {symbol}...", flush=True)
 
         try:
+            if not apply_basic_filters:
+                candidates.append(
+                    {
+                        "Symbol": symbol,
+                        "Company": company,
+                        "Sector": sector,
+                        "Exchange": exchange,
+                    }
+                )
+                continue
+
             df = fetch_stock_data(symbol, period="3mo", interval="1d")
 
-            if not passes_basic_filters(df):
+            if universe_mode == "us_listed":
+                if not passes_broad_universe_filters(df):
+                    continue
+            elif not passes_basic_filters(df):
                 continue
 
             metrics = _calculate_basic_metrics(df)
@@ -232,8 +277,10 @@ def scan_candidates(
                     "Symbol": symbol,
                     "Company": company,
                     "Sector": sector,
+                    "Exchange": exchange,
                     "Close": metrics["Close"],
                     "AvgVolume20": metrics["AvgVolume20"],
+                    "DollarVolume20": metrics["DollarVolume20"],
                     "SMA20": metrics["SMA20"],
                     "AboveSMA20": metrics["AboveSMA20"],
                 }
@@ -242,12 +289,110 @@ def scan_candidates(
             failures[symbol] = str(exc)
             print(f"Skipping {symbol}: {exc}", flush=True)
 
+    return candidates, failures
+
+
+def scan_candidates(
+    top_n_sectors: int = 5,
+    max_stocks_per_sector: Optional[int] = None,
+    universe_mode: str = "sp500",
+    max_universe_size: Optional[int] = None,
+    apply_basic_filters: bool = False,
+    apply_sector_filter: bool = False,
+) -> pd.DataFrame:
+    """
+    Load stock symbols for the scanner.
+
+    universe_mode:
+    - sp500: S&P 500 symbol rows.
+    - us_listed: broad Nasdaq Trader symbol-directory universe scan.
+
+    By default this only returns available symbol rows so the primary hard
+    universe gate is the first strategic filter. The old light price/volume/SMA
+    filters remain available only for explicit legacy calls.
+    """
+    normalized_mode = str(universe_mode or "sp500").strip().lower()
+    if max_universe_size is not None and max_universe_size <= 0:
+        raise ValueError("max_universe_size must be positive when provided.")
+
+    if normalized_mode not in {"sp500", "us_listed"}:
+        raise ValueError("universe_mode must be 'sp500' or 'us_listed'.")
+
+    if normalized_mode == "us_listed":
+        universe = load_us_listed_universe()
+        if universe.empty:
+            return _empty_candidates()
+
+        raw_universe_count = len(universe)
+        stocks_to_scan = universe.copy()
+        if max_universe_size is not None:
+            stocks_to_scan = stocks_to_scan.head(max_universe_size).reset_index(drop=True)
+        else:
+            stocks_to_scan = stocks_to_scan.reset_index(drop=True)
+
+        print(
+            f"US-listed universe loaded: {raw_universe_count} symbols; "
+            f"scanning {len(stocks_to_scan)}.",
+            flush=True,
+        )
+
+        candidates, failures = _scan_symbol_rows(
+            stocks_to_scan,
+            normalized_mode,
+            apply_basic_filters=apply_basic_filters,
+        )
+        results = pd.DataFrame(candidates, columns=CANDIDATE_COLUMNS)
+        if apply_basic_filters and not results.empty:
+            results = results.sort_values(
+                ["DollarVolume20", "AvgVolume20"], ascending=[False, False]
+            ).reset_index(drop=True)
+
+        results.attrs["failures"] = failures
+        results.attrs["universe_mode"] = normalized_mode
+        results.attrs["raw_universe_count"] = raw_universe_count
+        results.attrs["scanned_universe_count"] = len(stocks_to_scan)
+        return results
+
+    universe = load_sp500_universe()
+    if universe.empty:
+        return _empty_candidates()
+
+    top_sector_names: List[str] = []
+    if apply_sector_filter:
+        top_sector_ranking = get_top_sectors(top_n_sectors)
+        if top_sector_ranking.empty:
+            print("No top sectors available. Candidate scan stopped.", flush=True)
+            return _empty_candidates()
+
+        top_sector_names = top_sector_ranking["Sector"].tolist()
+        stocks_to_scan = filter_by_top_sectors(universe, top_sector_names)
+    else:
+        stocks_to_scan = universe.copy()
+
+    stocks_to_scan = _limit_stocks_per_sector(stocks_to_scan, max_stocks_per_sector)
+    stocks_to_scan["Exchange"] = ""
+    if max_universe_size is not None:
+        stocks_to_scan = stocks_to_scan.head(max_universe_size).reset_index(drop=True)
+
+    if stocks_to_scan.empty:
+        print("No S&P 500 stocks matched the selected universe settings.", flush=True)
+        return _empty_candidates()
+
+    candidates, failures = _scan_symbol_rows(
+        stocks_to_scan.reset_index(drop=True),
+        normalized_mode,
+        apply_basic_filters=apply_basic_filters,
+    )
+
     results = pd.DataFrame(candidates, columns=CANDIDATE_COLUMNS)
-    if not results.empty:
+    if apply_basic_filters and not results.empty:
         results = results.sort_values("AvgVolume20", ascending=False).reset_index(drop=True)
 
     results.attrs["failures"] = failures
     results.attrs["top_sectors"] = top_sector_names
+    results.attrs["universe_mode"] = normalized_mode
+    results.attrs["raw_universe_count"] = len(universe)
+    results.attrs["scanned_universe_count"] = len(stocks_to_scan)
     return results
 
 

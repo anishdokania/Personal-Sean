@@ -7,7 +7,7 @@ strong sectors. Sector ETFs are used as liquid proxies for each major sector.
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -16,32 +16,39 @@ from data_fetcher import fetch_stock_data, validate_ohlcv
 
 SECTOR_ETFS: Dict[str, str] = {
     "Technology": "XLK",
-    "Financials": "XLF",
-    "Healthcare": "XLV",
-    "Consumer Discretionary": "XLY",
-    "Consumer Staples": "XLP",
-    "Industrials": "XLI",
     "Energy": "XLE",
+    "Communication Services": "XLC",
+    "Industrials": "XLI",
+    "Consumer Discretionary": "XLY",
+    "Financials": "XLF",
+    "Real Estate": "XLRE",
     "Materials": "XLB",
     "Utilities": "XLU",
-    "Real Estate": "XLRE",
-    "Communication Services": "XLC",
+    "Healthcare": "XLV",
+    "Consumer Staples": "XLP",
 }
 
-RETURN_COLUMNS = ["1W_Return", "1M_Return", "3M_Return"]
-RANK_COLUMNS = {
-    "1W_Return": "Rank_1W",
-    "1M_Return": "Rank_1M",
-    "3M_Return": "Rank_3M",
+LOOKBACKS = {
+    "1W": 5,
+    "1M": 21,
+    "3M": 63,
+    "6M": 126,
+    "1Y": 252,
 }
+LOOKBACK_WEIGHTS = {
+    "1W": 0.20,
+    "1M": 0.30,
+    "3M": 0.30,
+    "6M": 0.10,
+    "1Y": 0.10,
+}
+RETURN_COLUMNS = [f"{label}_Return" for label in LOOKBACKS]
 OUTPUT_COLUMNS = [
     "Sector",
     "ETF",
     *RETURN_COLUMNS,
-    "Rank_1W",
-    "Rank_1M",
-    "Rank_3M",
     "Score",
+    "SectorRank",
 ]
 
 
@@ -72,29 +79,23 @@ def calculate_performance(df: pd.DataFrame, days: int) -> float:
     return float(((latest_close / historical_close) - 1) * 100)
 
 
-def _assign_rank_scores(ranking: pd.DataFrame, return_column: str) -> pd.Series:
-    """Assign 11-to-1 style rank scores for one return timeframe."""
-    max_score = len(SECTOR_ETFS)
-    sorted_returns = ranking[return_column].sort_values(ascending=False)
+def _weighted_sector_score(row: Dict[str, float]) -> Optional[float]:
+    """Calculate weighted sector score, normalizing when lookbacks are missing."""
+    weighted_score = 0.0
+    available_weight = 0.0
 
-    rank_scores = {
-        index: max_score - rank_position
-        for rank_position, index in enumerate(sorted_returns.index)
-    }
+    for label, weight in LOOKBACK_WEIGHTS.items():
+        value = row.get(f"{label}_Return")
+        if value is None or pd.isna(value):
+            continue
 
-    return ranking.index.to_series().map(rank_scores).astype(int)
+        weighted_score += float(value) * weight
+        available_weight += weight
 
+    if available_weight <= 0:
+        return None
 
-def _assign_display_ranks(ranking: pd.DataFrame, return_column: str) -> pd.Series:
-    """Assign transparent ranks where the strongest return is rank 1."""
-    sorted_returns = ranking[return_column].sort_values(ascending=False)
-
-    display_ranks = {
-        index: rank_position + 1
-        for rank_position, index in enumerate(sorted_returns.index)
-    }
-
-    return ranking.index.to_series().map(display_ranks).astype(int)
+    return weighted_score / available_weight
 
 
 def rank_sectors() -> pd.DataFrame:
@@ -102,8 +103,8 @@ def rank_sectors() -> pd.DataFrame:
     Fetch sector ETF data, calculate returns, and rank sectors by combined score.
 
     Returns:
-        DataFrame with Sector, ETF, timeframe returns, transparent timeframe
-        ranks, and Score, sorted from strongest to weakest combined sector
+        DataFrame with Sector, ETF, timeframe returns, weighted Score, and
+        SectorRank, sorted from strongest to weakest combined sector
         strength.
     """
     sector_rows: List[Dict[str, float | str]] = []
@@ -111,26 +112,22 @@ def rank_sectors() -> pd.DataFrame:
 
     for sector, etf in SECTOR_ETFS.items():
         try:
-            df = fetch_stock_data(etf, period="6mo", interval="1d")
+            df = fetch_stock_data(etf, period="18mo", interval="1d")
 
-            one_week_return = calculate_performance(df, 5)
-            one_month_return = calculate_performance(df, 21)
-            three_month_return = calculate_performance(df, 63)
+            row: Dict[str, float | str] = {
+                "Sector": sector,
+                "ETF": etf,
+            }
+            for label, days in LOOKBACKS.items():
+                row[f"{label}_Return"] = calculate_performance(df, days)
 
-            returns = [one_week_return, one_month_return, three_month_return]
-            if any(pd.isna(value) for value in returns):
+            score = _weighted_sector_score(row)  # type: ignore[arg-type]
+            if score is None:
                 errors[etf] = f"{sector}: insufficient clean history for ranking."
                 continue
 
-            sector_rows.append(
-                {
-                    "Sector": sector,
-                    "ETF": etf,
-                    "1W_Return": one_week_return,
-                    "1M_Return": one_month_return,
-                    "3M_Return": three_month_return,
-                }
-            )
+            row["Score"] = score
+            sector_rows.append(row)
         except Exception as exc:
             errors[etf] = f"{sector}: {exc}"
 
@@ -140,26 +137,12 @@ def rank_sectors() -> pd.DataFrame:
         return ranking
 
     ranking = pd.DataFrame(sector_rows)
-    score_columns = []
-
-    for return_column in RETURN_COLUMNS:
-        score_column = f"{return_column}_Rank_Score"
-        rank_column = RANK_COLUMNS[return_column]
-
-        # Display rank: best return is 1, second best is 2, and so on.
-        ranking[rank_column] = _assign_display_ranks(ranking, return_column)
-
-        # Score contribution is intentionally unchanged: best sector receives
-        # the highest points for this timeframe.
-        ranking[score_column] = _assign_rank_scores(ranking, return_column)
-        score_columns.append(score_column)
-
-    ranking["Score"] = ranking[score_columns].sum(axis=1)
-    ranking = ranking.loc[:, OUTPUT_COLUMNS]
     ranking = ranking.sort_values(
         by=["Score", "1M_Return", "3M_Return", "1W_Return"],
         ascending=[False, False, False, False],
     ).reset_index(drop=True)
+    ranking["SectorRank"] = ranking.index + 1
+    ranking = ranking.loc[:, OUTPUT_COLUMNS]
 
     ranking.attrs["errors"] = errors
     return ranking

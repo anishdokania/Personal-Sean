@@ -1,0 +1,1508 @@
+{
+  "generated_at": "2026-06-03T19:38",
+  "primary_gated_count": 8,
+  "detector_failures": {},
+  "candidates": [
+    {
+      "ticker": "A",
+      "company": "Agilent Technologies",
+      "sector": "Health Care",
+      "close": 137.39999389648438,
+      "volume": 2423914.0,
+      "avg_volume": 2723955.7,
+      "rel_volume": 0.8898507416989196,
+      "detector_count": 9,
+      "detector_names": [
+        "TIGHT_RANGE_COMPRESSION",
+        "BIG_BASE_NEAR_HIGHS",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "POWER_EARNINGS_GAP_CATALYST_GAP",
+        "BREAKOUT_PROXIMITY",
+        "TREND_ALIGNMENT_EMA_RECLAIM",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY"
+      ],
+      "detector_confidence": "TIGHT_RANGE_COMPRESSION=MEDIUM; BIG_BASE_NEAR_HIGHS=MEDIUM; POSSIBLE_ACCUMULATION_BASE=HIGH; POWER_EARNINGS_GAP_CATALYST_GAP=HIGH; BREAKOUT_PROXIMITY=HIGH; TREND_ALIGNMENT_EMA_RECLAIM=MEDIUM; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=MEDIUM; RISK_REWARD_VIABILITY=LOW",
+      "detector_tags": [
+        "ABOVE_8_21_50",
+        "BIG_BASE_NEAR_HIGHS",
+        "CATALYST_GAP",
+        "CLEAR_TRIGGER",
+        "CLEAR_TRIGGER_NEARBY",
+        "EMERGING_BASE_RECLAIM",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "GAP_BASE_TRIGGER_READY",
+        "GAP_HOLDING_HIGH",
+        "GREEN_VOLUME_DOMINANCE",
+        "HIGH_VOLUME_REVERSAL_FROM_LOW",
+        "LEADER_BASE",
+        "LEADER_TREND",
+        "LEADING_NAME_NEAR_TRIGGER",
+        "MILD_EXTENSION",
+        "NEAR_BREAKOUT_TRIGGER",
+        "NEAR_TRIGGER",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "POST_GAP_FLAG",
+        "RANGE_CONTRACTION",
+        "RESISTANCE_TOO_CLOSE",
+        "STOP_TOO_WIDE",
+        "TIGHT_3D_BASE",
+        "TIGHT_5D_BASE"
+      ],
+      "high_value_tags": [
+        "BIG_BASE_NEAR_HIGHS",
+        "CATALYST_GAP",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "LEADING_NAME_NEAR_TRIGGER",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "POST_GAP_FLAG"
+      ],
+      "warning_tags": [
+        "MILD_EXTENSION",
+        "RESISTANCE_TOO_CLOSE",
+        "STOP_TOO_WIDE"
+      ],
+      "setup_family": "Power gap/catalyst gap",
+      "trigger_level": 139.35000610351562,
+      "stop_reference": 122.63420735801667,
+      "interest_rank": 79.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Recent multi-day range is contracting.",
+        "Compression ranges: 3D 5.0% / 5D 6.0% / 10D 22.6%.",
+        "Large base/range is near highs and price is above the 50 EMA.",
+        "Possible accumulation only: prior decline has started to stabilize.",
+        "Large gap up of 14.8% on elevated volume is still holding.",
+        "Nearest trigger is prior day high at 136.40, -0.7% from close.",
+        "EMA stack is aligned 8 > 21 > 50 with price above the stack.",
+        "Close is 5.8% from EMA8.",
+        "Nearby trigger from prior day high at 136.40.",
+        "Approximate entry 136.40, stop 122.63, risk 10.1%.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "TIGHT_RANGE_COMPRESSION",
+          "confidence": "MEDIUM",
+          "tags": [
+            "TIGHT_3D_BASE",
+            "TIGHT_5D_BASE",
+            "RANGE_CONTRACTION"
+          ],
+          "setup_family": "Inside-day compression",
+          "trigger_level": 139.35000610351562,
+          "stop_reference": 122.63420735801667,
+          "notes": [
+            "Recent multi-day range is contracting.",
+            "Compression ranges: 3D 5.0% / 5D 6.0% / 10D 22.6%."
+          ]
+        },
+        {
+          "name": "BIG_BASE_NEAR_HIGHS",
+          "confidence": "MEDIUM",
+          "tags": [
+            "BIG_BASE_NEAR_HIGHS",
+            "LEADER_BASE"
+          ],
+          "setup_family": "Leaders near highs",
+          "trigger_level": 160.27000427246094,
+          "stop_reference": 122.63420735801667,
+          "notes": [
+            "Large base/range is near highs and price is above the 50 EMA."
+          ]
+        },
+        {
+          "name": "POSSIBLE_ACCUMULATION_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_ACCUMULATION_BASE",
+            "HIGH_VOLUME_REVERSAL_FROM_LOW",
+            "GREEN_VOLUME_DOMINANCE",
+            "FAILED_BREAKDOWN_RECLAIM",
+            "EMERGING_BASE_RECLAIM"
+          ],
+          "setup_family": "Possible accumulation/emerging reclaim",
+          "trigger_level": 139.35000610351562,
+          "stop_reference": 108.3499984741211,
+          "notes": [
+            "Possible accumulation only: prior decline has started to stabilize."
+          ]
+        },
+        {
+          "name": "POWER_EARNINGS_GAP_CATALYST_GAP",
+          "confidence": "HIGH",
+          "tags": [
+            "CATALYST_GAP",
+            "POST_GAP_FLAG",
+            "GAP_HOLDING_HIGH",
+            "GAP_BASE_TRIGGER_READY"
+          ],
+          "setup_family": "Power gap/catalyst gap",
+          "trigger_level": 139.35000610351562,
+          "stop_reference": 135.20000457763672,
+          "notes": [
+            "Large gap up of 14.8% on elevated volume is still holding."
+          ]
+        },
+        {
+          "name": "BREAKOUT_PROXIMITY",
+          "confidence": "HIGH",
+          "tags": [
+            "NEAR_BREAKOUT_TRIGGER",
+            "CLEAR_TRIGGER_NEARBY",
+            "CLEAR_TRIGGER_NEARBY",
+            "LEADING_NAME_NEAR_TRIGGER"
+          ],
+          "setup_family": "Breakout/retest",
+          "trigger_level": 136.39999389648438,
+          "stop_reference": 122.63420735801667,
+          "notes": [
+            "Nearest trigger is prior day high at 136.40, -0.7% from close."
+          ]
+        },
+        {
+          "name": "TREND_ALIGNMENT_EMA_RECLAIM",
+          "confidence": "MEDIUM",
+          "tags": [
+            "ABOVE_8_21_50",
+            "LEADER_TREND"
+          ],
+          "setup_family": "Trend/reclaim",
+          "trigger_level": 139.35000610351562,
+          "stop_reference": 122.63420735801667,
+          "notes": [
+            "EMA stack is aligned 8 > 21 > 50 with price above the stack."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "MILD_EXTENSION"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is 5.8% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "CLEAR_TRIGGER",
+            "NEAR_TRIGGER"
+          ],
+          "setup_family": null,
+          "trigger_level": 136.39999389648438,
+          "stop_reference": 122.63420735801667,
+          "notes": [
+            "Nearby trigger from prior day high at 136.40."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "LOW",
+          "tags": [
+            "STOP_TOO_WIDE",
+            "RESISTANCE_TOO_CLOSE"
+          ],
+          "setup_family": null,
+          "trigger_level": 136.39999389648438,
+          "stop_reference": 122.63420735801667,
+          "notes": [
+            "Approximate entry 136.40, stop 122.63, risk 10.1%."
+          ]
+        }
+      ],
+      "source_error": ""
+    },
+    {
+      "ticker": "AKAM",
+      "company": "Akamai Technologies",
+      "sector": "Information Technology",
+      "close": 160.36000061035156,
+      "volume": 3598996.0,
+      "avg_volume": 7326409.8,
+      "rel_volume": 0.4912359666258363,
+      "detector_count": 9,
+      "detector_names": [
+        "RIGHT_SIDE_OF_BASE",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "POWER_EARNINGS_GAP_CATALYST_GAP",
+        "BREAKOUT_PROXIMITY",
+        "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+        "TREND_ALIGNMENT_EMA_RECLAIM",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY"
+      ],
+      "detector_confidence": "RIGHT_SIDE_OF_BASE=HIGH; POSSIBLE_ACCUMULATION_BASE=HIGH; POWER_EARNINGS_GAP_CATALYST_GAP=HIGH; BREAKOUT_PROXIMITY=MEDIUM; POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION=MEDIUM; TREND_ALIGNMENT_EMA_RECLAIM=MEDIUM; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=MEDIUM; RISK_REWARD_VIABILITY=LOW",
+      "detector_tags": [
+        "ABOVE_8_21_50",
+        "BASE_MATURING",
+        "CATALYST_GAP",
+        "CLEAR_TRIGGER",
+        "CLEAR_TRIGGER_NEARBY",
+        "CONTROLLED_PULLBACK",
+        "EMERGING_BASE_RECLAIM",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "GAP_BASE_TRIGGER_READY",
+        "GAP_HOLDING_HIGH",
+        "GREEN_VOLUME_DOMINANCE",
+        "HIGHER_LOW_IN_BASE",
+        "HIGH_VOLUME_REVERSAL_FROM_LOW",
+        "LEADER_TREND",
+        "LEADING_NAME_NEAR_TRIGGER",
+        "MILD_EXTENSION",
+        "MULTI_TOUCH_RESISTANCE",
+        "NEAR_BREAKOUT_TRIGGER",
+        "NEAR_TRIGGER",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "POSSIBLE_BULL_FLAG",
+        "POST_GAP_FLAG",
+        "RESISTANCE_TOO_CLOSE",
+        "RIGHT_SIDE_OF_BASE",
+        "SHALLOW_RETRACE",
+        "SHALLOW_RIGHT_SIDE_PULLBACK",
+        "STOP_TOO_WIDE"
+      ],
+      "high_value_tags": [
+        "CATALYST_GAP",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "LEADING_NAME_NEAR_TRIGGER",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "POST_GAP_FLAG",
+        "RIGHT_SIDE_OF_BASE"
+      ],
+      "warning_tags": [
+        "MILD_EXTENSION",
+        "RESISTANCE_TOO_CLOSE",
+        "STOP_TOO_WIDE"
+      ],
+      "setup_family": "Power gap/catalyst gap",
+      "trigger_level": 165.4499969482422,
+      "stop_reference": 138.10000610351562,
+      "interest_rank": 79.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Price is on the right side of a multi-week base/range.",
+        "Possible accumulation only: prior decline has started to stabilize.",
+        "Large gap up of 24.6% on elevated volume is still holding.",
+        "Nearest trigger is prior day high at 163.25, 1.8% from close.",
+        "Prior impulse is digesting in a controlled pullback/compression area.",
+        "EMA stack is aligned 8 > 21 > 50 with price above the stack.",
+        "Close is 5.0% from EMA8.",
+        "Nearby trigger from prior day high at 163.25.",
+        "Approximate entry 163.25, stop 142.86, risk 12.5%.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "RIGHT_SIDE_OF_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "RIGHT_SIDE_OF_BASE",
+            "BASE_MATURING",
+            "HIGHER_LOW_IN_BASE",
+            "SHALLOW_RIGHT_SIDE_PULLBACK"
+          ],
+          "setup_family": "Right-side/base setups",
+          "trigger_level": 165.4499969482422,
+          "stop_reference": 138.10000610351562,
+          "notes": [
+            "Price is on the right side of a multi-week base/range."
+          ]
+        },
+        {
+          "name": "POSSIBLE_ACCUMULATION_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_ACCUMULATION_BASE",
+            "HIGH_VOLUME_REVERSAL_FROM_LOW",
+            "GREEN_VOLUME_DOMINANCE",
+            "FAILED_BREAKDOWN_RECLAIM",
+            "EMERGING_BASE_RECLAIM"
+          ],
+          "setup_family": "Possible accumulation/emerging reclaim",
+          "trigger_level": 165.4499969482422,
+          "stop_reference": 138.10000610351562,
+          "notes": [
+            "Possible accumulation only: prior decline has started to stabilize."
+          ]
+        },
+        {
+          "name": "POWER_EARNINGS_GAP_CATALYST_GAP",
+          "confidence": "HIGH",
+          "tags": [
+            "CATALYST_GAP",
+            "POST_GAP_FLAG",
+            "GAP_HOLDING_HIGH",
+            "GAP_BASE_TRIGGER_READY"
+          ],
+          "setup_family": "Power gap/catalyst gap",
+          "trigger_level": 164.8000030517578,
+          "stop_reference": 141.30500030517578,
+          "notes": [
+            "Large gap up of 24.6% on elevated volume is still holding."
+          ]
+        },
+        {
+          "name": "BREAKOUT_PROXIMITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "NEAR_BREAKOUT_TRIGGER",
+            "CLEAR_TRIGGER_NEARBY",
+            "CLEAR_TRIGGER_NEARBY",
+            "LEADING_NAME_NEAR_TRIGGER"
+          ],
+          "setup_family": "Breakout/retest",
+          "trigger_level": 163.25,
+          "stop_reference": 142.86457553393296,
+          "notes": [
+            "Nearest trigger is prior day high at 163.25, 1.8% from close."
+          ]
+        },
+        {
+          "name": "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+          "confidence": "MEDIUM",
+          "tags": [
+            "POSSIBLE_BULL_FLAG",
+            "CONTROLLED_PULLBACK",
+            "SHALLOW_RETRACE"
+          ],
+          "setup_family": "Right-side/base setups",
+          "trigger_level": 164.8000030517578,
+          "stop_reference": 138.10000610351562,
+          "notes": [
+            "Prior impulse is digesting in a controlled pullback/compression area."
+          ]
+        },
+        {
+          "name": "TREND_ALIGNMENT_EMA_RECLAIM",
+          "confidence": "MEDIUM",
+          "tags": [
+            "ABOVE_8_21_50",
+            "LEADER_TREND"
+          ],
+          "setup_family": "Trend/reclaim",
+          "trigger_level": 164.8000030517578,
+          "stop_reference": 142.86457553393296,
+          "notes": [
+            "EMA stack is aligned 8 > 21 > 50 with price above the stack."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "MILD_EXTENSION"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is 5.0% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "CLEAR_TRIGGER",
+            "NEAR_TRIGGER",
+            "MULTI_TOUCH_RESISTANCE"
+          ],
+          "setup_family": null,
+          "trigger_level": 163.25,
+          "stop_reference": 142.86457553393296,
+          "notes": [
+            "Nearby trigger from prior day high at 163.25."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "LOW",
+          "tags": [
+            "STOP_TOO_WIDE",
+            "RESISTANCE_TOO_CLOSE"
+          ],
+          "setup_family": null,
+          "trigger_level": 163.25,
+          "stop_reference": 142.86457553393296,
+          "notes": [
+            "Approximate entry 163.25, stop 142.86, risk 12.5%."
+          ]
+        }
+      ],
+      "source_error": ""
+    },
+    {
+      "ticker": "ABBV",
+      "company": "AbbVie",
+      "sector": "Health Care",
+      "close": 217.1300048828125,
+      "volume": 5568786.0,
+      "avg_volume": 5602064.3,
+      "rel_volume": 0.994059636195179,
+      "detector_count": 8,
+      "detector_names": [
+        "TIGHT_RANGE_COMPRESSION",
+        "RIGHT_SIDE_OF_BASE",
+        "BREAKOUT_PROXIMITY",
+        "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+        "TREND_ALIGNMENT_EMA_RECLAIM",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY"
+      ],
+      "detector_confidence": "TIGHT_RANGE_COMPRESSION=MEDIUM; RIGHT_SIDE_OF_BASE=HIGH; BREAKOUT_PROXIMITY=HIGH; POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION=HIGH; TREND_ALIGNMENT_EMA_RECLAIM=MEDIUM; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=MEDIUM; RISK_REWARD_VIABILITY=MEDIUM",
+      "detector_tags": [
+        "ABOVE_8_21_50",
+        "BASE_MATURING",
+        "CLEAR_TRIGGER",
+        "CLEAR_TRIGGER_NEARBY",
+        "CONTROLLED_PULLBACK",
+        "FLAG_INTO_21EMA",
+        "FLAG_INTO_8EMA",
+        "GOOD_RR",
+        "HIGHER_LOW_IN_BASE",
+        "LEADER_TREND",
+        "LEADING_NAME_NEAR_TRIGGER",
+        "MULTI_TOUCH_RESISTANCE",
+        "NEAR_8EMA_IDEAL",
+        "NEAR_BREAKOUT_TRIGGER",
+        "NEAR_TRIGGER",
+        "POSSIBLE_BULL_FLAG",
+        "RIGHT_SIDE_OF_BASE",
+        "SHALLOW_RETRACE",
+        "SHALLOW_RIGHT_SIDE_PULLBACK",
+        "TIGHT_10D_BASE",
+        "TIGHT_3D_BASE",
+        "TIGHT_5D_BASE",
+        "TIGHT_RISK"
+      ],
+      "high_value_tags": [
+        "LEADING_NAME_NEAR_TRIGGER",
+        "RIGHT_SIDE_OF_BASE"
+      ],
+      "warning_tags": [],
+      "setup_family": "Breakout/retest",
+      "trigger_level": 220.00999450683594,
+      "stop_reference": 212.42267232648092,
+      "interest_rank": 66.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Compression ranges: 3D 4.9% / 5D 4.9% / 10D 5.1%.",
+        "Price is on the right side of a multi-week base/range.",
+        "Nearest trigger is prior day high at 216.57, -0.3% from close.",
+        "Prior impulse is digesting in a controlled pullback/compression area.",
+        "EMA stack is aligned 8 > 21 > 50 with price above the stack.",
+        "Close is 0.9% from EMA8.",
+        "Nearby trigger from prior day high at 216.57.",
+        "Approximate entry 216.57, stop 212.42, risk 1.9%.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "TIGHT_RANGE_COMPRESSION",
+          "confidence": "MEDIUM",
+          "tags": [
+            "TIGHT_3D_BASE",
+            "TIGHT_5D_BASE",
+            "TIGHT_10D_BASE"
+          ],
+          "setup_family": "Inside-day compression",
+          "trigger_level": 220.00999450683594,
+          "stop_reference": 212.42267232648092,
+          "notes": [
+            "Compression ranges: 3D 4.9% / 5D 4.9% / 10D 5.1%."
+          ]
+        },
+        {
+          "name": "RIGHT_SIDE_OF_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "RIGHT_SIDE_OF_BASE",
+            "BASE_MATURING",
+            "HIGHER_LOW_IN_BASE",
+            "SHALLOW_RIGHT_SIDE_PULLBACK"
+          ],
+          "setup_family": "Right-side/base setups",
+          "trigger_level": 237.11000061035156,
+          "stop_reference": 208.99000549316406,
+          "notes": [
+            "Price is on the right side of a multi-week base/range."
+          ]
+        },
+        {
+          "name": "BREAKOUT_PROXIMITY",
+          "confidence": "HIGH",
+          "tags": [
+            "NEAR_BREAKOUT_TRIGGER",
+            "CLEAR_TRIGGER_NEARBY",
+            "CLEAR_TRIGGER_NEARBY",
+            "LEADING_NAME_NEAR_TRIGGER"
+          ],
+          "setup_family": "Breakout/retest",
+          "trigger_level": 216.57000732421875,
+          "stop_reference": 212.42267232648092,
+          "notes": [
+            "Nearest trigger is prior day high at 216.57, -0.3% from close."
+          ]
+        },
+        {
+          "name": "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_BULL_FLAG",
+            "CONTROLLED_PULLBACK",
+            "SHALLOW_RETRACE",
+            "FLAG_INTO_8EMA",
+            "FLAG_INTO_21EMA"
+          ],
+          "setup_family": "Right-side/base setups",
+          "trigger_level": 220.00999450683594,
+          "stop_reference": 208.99000549316406,
+          "notes": [
+            "Prior impulse is digesting in a controlled pullback/compression area."
+          ]
+        },
+        {
+          "name": "TREND_ALIGNMENT_EMA_RECLAIM",
+          "confidence": "MEDIUM",
+          "tags": [
+            "ABOVE_8_21_50",
+            "LEADER_TREND"
+          ],
+          "setup_family": "Trend/reclaim",
+          "trigger_level": 219.60000610351562,
+          "stop_reference": 212.42267232648092,
+          "notes": [
+            "EMA stack is aligned 8 > 21 > 50 with price above the stack."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "NEAR_8EMA_IDEAL"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is 0.9% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "CLEAR_TRIGGER",
+            "NEAR_TRIGGER",
+            "MULTI_TOUCH_RESISTANCE"
+          ],
+          "setup_family": null,
+          "trigger_level": 216.57000732421875,
+          "stop_reference": 212.42267232648092,
+          "notes": [
+            "Nearby trigger from prior day high at 216.57."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "TIGHT_RISK",
+            "GOOD_RR"
+          ],
+          "setup_family": null,
+          "trigger_level": 216.57000732421875,
+          "stop_reference": 212.42267232648092,
+          "notes": [
+            "Approximate entry 216.57, stop 212.42, risk 1.9%."
+          ]
+        }
+      ],
+      "source_error": ""
+    },
+    {
+      "ticker": "ARE",
+      "company": "Alexandria Real Estate Equities",
+      "sector": "Real Estate",
+      "close": 51.27000045776367,
+      "volume": 1524789.0,
+      "avg_volume": 1993184.45,
+      "rel_volume": 0.7650014528259038,
+      "detector_count": 8,
+      "detector_names": [
+        "INSIDE_DAY",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "BREAKOUT_RETEST",
+        "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+        "TREND_ALIGNMENT_EMA_RECLAIM",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY"
+      ],
+      "detector_confidence": "INSIDE_DAY=HIGH; POSSIBLE_ACCUMULATION_BASE=HIGH; BREAKOUT_RETEST=MEDIUM; POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION=HIGH; TREND_ALIGNMENT_EMA_RECLAIM=MEDIUM; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=LOW; RISK_REWARD_VIABILITY=LOW",
+      "detector_tags": [
+        "ABOVE_8_21_50",
+        "BREAKOUT_RETEST",
+        "CONTROLLED_PULLBACK",
+        "EMERGING_BASE_RECLAIM",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "FLAG_INTO_8EMA",
+        "HIGH_VOLUME_REVERSAL_FROM_LOW",
+        "INSIDE_DAY",
+        "INSIDE_DAY_NEAR_HIGHS",
+        "LEADER_TREND",
+        "LOW_VOLUME_PULLBACK",
+        "NEAR_8EMA_IDEAL",
+        "NO_CLEAR_TRIGGER",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "POSSIBLE_BULL_FLAG",
+        "RESISTANCE_TOO_CLOSE",
+        "RETEST_HOLDING",
+        "SHALLOW_RETRACE",
+        "TIGHT_INSIDE_DAY",
+        "WEDGE_COMPRESSION"
+      ],
+      "high_value_tags": [
+        "BREAKOUT_RETEST",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "INSIDE_DAY_NEAR_HIGHS",
+        "POSSIBLE_ACCUMULATION_BASE"
+      ],
+      "warning_tags": [
+        "NO_CLEAR_TRIGGER",
+        "RESISTANCE_TOO_CLOSE"
+      ],
+      "setup_family": "Breakout/retest",
+      "trigger_level": 52.599998474121094,
+      "stop_reference": 51.290000915527344,
+      "interest_rank": 63.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Inside day: current high is below prior high and low is above prior low.",
+        "Inside day is close to recent highs.",
+        "Inside-day range is materially smaller than the prior range.",
+        "Possible accumulation only: prior decline has started to stabilize.",
+        "Recent breakout level near 51.00 is being tested/held.",
+        "Prior impulse is digesting in a controlled pullback/compression area.",
+        "EMA stack is aligned 8 > 21 > 50 with price above the stack.",
+        "Close is 2.6% from EMA8.",
+        "No nearby clean prior-high/base trigger was found.",
+        "Approximate entry 51.27, stop 48.15, risk 6.1%.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "INSIDE_DAY",
+          "confidence": "HIGH",
+          "tags": [
+            "INSIDE_DAY",
+            "INSIDE_DAY_NEAR_HIGHS",
+            "TIGHT_INSIDE_DAY"
+          ],
+          "setup_family": "Inside-day compression",
+          "trigger_level": 52.599998474121094,
+          "stop_reference": 51.290000915527344,
+          "notes": [
+            "Inside day: current high is below prior high and low is above prior low.",
+            "Inside day is close to recent highs.",
+            "Inside-day range is materially smaller than the prior range."
+          ]
+        },
+        {
+          "name": "POSSIBLE_ACCUMULATION_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_ACCUMULATION_BASE",
+            "HIGH_VOLUME_REVERSAL_FROM_LOW",
+            "FAILED_BREAKDOWN_RECLAIM",
+            "EMERGING_BASE_RECLAIM"
+          ],
+          "setup_family": "Possible accumulation/emerging reclaim",
+          "trigger_level": 53.369998931884766,
+          "stop_reference": 45.70000076293945,
+          "notes": [
+            "Possible accumulation only: prior decline has started to stabilize."
+          ]
+        },
+        {
+          "name": "BREAKOUT_RETEST",
+          "confidence": "MEDIUM",
+          "tags": [
+            "BREAKOUT_RETEST",
+            "RETEST_HOLDING",
+            "LOW_VOLUME_PULLBACK"
+          ],
+          "setup_family": "Breakout/retest",
+          "trigger_level": 53.369998931884766,
+          "stop_reference": 51.0,
+          "notes": [
+            "Recent breakout level near 51.00 is being tested/held."
+          ]
+        },
+        {
+          "name": "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_BULL_FLAG",
+            "CONTROLLED_PULLBACK",
+            "SHALLOW_RETRACE",
+            "FLAG_INTO_8EMA",
+            "WEDGE_COMPRESSION"
+          ],
+          "setup_family": "Right-side/base setups",
+          "trigger_level": 53.369998931884766,
+          "stop_reference": 45.70000076293945,
+          "notes": [
+            "Prior impulse is digesting in a controlled pullback/compression area."
+          ]
+        },
+        {
+          "name": "TREND_ALIGNMENT_EMA_RECLAIM",
+          "confidence": "MEDIUM",
+          "tags": [
+            "ABOVE_8_21_50",
+            "LEADER_TREND"
+          ],
+          "setup_family": "Trend/reclaim",
+          "trigger_level": 53.369998931884766,
+          "stop_reference": 48.14569628269702,
+          "notes": [
+            "EMA stack is aligned 8 > 21 > 50 with price above the stack."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "NEAR_8EMA_IDEAL"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is 2.6% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "LOW",
+          "tags": [
+            "NO_CLEAR_TRIGGER"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "No nearby clean prior-high/base trigger was found."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "LOW",
+          "tags": [
+            "RESISTANCE_TOO_CLOSE"
+          ],
+          "setup_family": null,
+          "trigger_level": 51.27000045776367,
+          "stop_reference": 48.14569628269702,
+          "notes": [
+            "Approximate entry 51.27, stop 48.15, risk 6.1%."
+          ]
+        }
+      ],
+      "source_error": ""
+    },
+    {
+      "ticker": "AFL",
+      "company": "Aflac",
+      "sector": "Financials",
+      "close": 114.5,
+      "volume": 3930897.0,
+      "avg_volume": 2510659.85,
+      "rel_volume": 1.565682822386314,
+      "detector_count": 7,
+      "detector_names": [
+        "TIGHT_RANGE_COMPRESSION",
+        "BIG_BASE_NEAR_HIGHS",
+        "BREAKOUT_PROXIMITY",
+        "TREND_ALIGNMENT_EMA_RECLAIM",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY"
+      ],
+      "detector_confidence": "TIGHT_RANGE_COMPRESSION=HIGH; BIG_BASE_NEAR_HIGHS=MEDIUM; BREAKOUT_PROXIMITY=HIGH; TREND_ALIGNMENT_EMA_RECLAIM=MEDIUM; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=MEDIUM; RISK_REWARD_VIABILITY=MEDIUM",
+      "detector_tags": [
+        "BIG_BASE_NEAR_HIGHS",
+        "CLEAR_TRIGGER",
+        "CLEAR_TRIGGER_NEARBY",
+        "EMERGING_RECLAIM",
+        "GOOD_RR",
+        "LEADER_BASE",
+        "NEAR_8EMA_IDEAL",
+        "NEAR_BREAKOUT_TRIGGER",
+        "NEAR_TRIGGER",
+        "RANGE_CONTRACTION",
+        "RECLAIMED_50EMA",
+        "RECLAIMED_8EMA",
+        "TIGHT_10D_BASE",
+        "TIGHT_3D_BASE",
+        "TIGHT_5D_BASE",
+        "TIGHT_RISK",
+        "UPPER_RANGE_TIGHTENING"
+      ],
+      "high_value_tags": [
+        "BIG_BASE_NEAR_HIGHS"
+      ],
+      "warning_tags": [],
+      "setup_family": "Breakout/retest",
+      "trigger_level": 118.66000366210938,
+      "stop_reference": 110.54000091552734,
+      "interest_rank": 53.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Recent multi-day range is contracting.",
+        "Compression ranges: 3D 5.1% / 5D 5.1% / 10D 7.1%.",
+        "Large base/range is near highs and price is above the 50 EMA.",
+        "Recent action is tightening in the upper portion of the range.",
+        "Nearest trigger is prior day high at 113.91, -0.5% from close.",
+        "Price has constructive EMA alignment or reclaim behavior.",
+        "Close is 0.2% from EMA8.",
+        "Nearby trigger from prior day high at 113.91.",
+        "Approximate entry 113.91, stop 110.54, risk 3.0%.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "TIGHT_RANGE_COMPRESSION",
+          "confidence": "HIGH",
+          "tags": [
+            "TIGHT_3D_BASE",
+            "TIGHT_5D_BASE",
+            "TIGHT_10D_BASE",
+            "RANGE_CONTRACTION"
+          ],
+          "setup_family": "Inside-day compression",
+          "trigger_level": 118.66000366210938,
+          "stop_reference": 110.54000091552734,
+          "notes": [
+            "Recent multi-day range is contracting.",
+            "Compression ranges: 3D 5.1% / 5D 5.1% / 10D 7.1%."
+          ]
+        },
+        {
+          "name": "BIG_BASE_NEAR_HIGHS",
+          "confidence": "MEDIUM",
+          "tags": [
+            "BIG_BASE_NEAR_HIGHS",
+            "LEADER_BASE",
+            "UPPER_RANGE_TIGHTENING"
+          ],
+          "setup_family": "Leaders near highs",
+          "trigger_level": 119.80999755859375,
+          "stop_reference": 110.54000091552734,
+          "notes": [
+            "Large base/range is near highs and price is above the 50 EMA.",
+            "Recent action is tightening in the upper portion of the range."
+          ]
+        },
+        {
+          "name": "BREAKOUT_PROXIMITY",
+          "confidence": "HIGH",
+          "tags": [
+            "NEAR_BREAKOUT_TRIGGER",
+            "CLEAR_TRIGGER_NEARBY",
+            "CLEAR_TRIGGER_NEARBY"
+          ],
+          "setup_family": "Breakout/retest",
+          "trigger_level": 113.91000366210938,
+          "stop_reference": 110.54000091552734,
+          "notes": [
+            "Nearest trigger is prior day high at 113.91, -0.5% from close."
+          ]
+        },
+        {
+          "name": "TREND_ALIGNMENT_EMA_RECLAIM",
+          "confidence": "MEDIUM",
+          "tags": [
+            "RECLAIMED_8EMA",
+            "EMERGING_RECLAIM",
+            "RECLAIMED_50EMA",
+            "EMERGING_RECLAIM"
+          ],
+          "setup_family": "Trend/reclaim",
+          "trigger_level": 116.37999725341797,
+          "stop_reference": 110.54000091552734,
+          "notes": [
+            "Price has constructive EMA alignment or reclaim behavior."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "NEAR_8EMA_IDEAL"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is 0.2% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "CLEAR_TRIGGER",
+            "NEAR_TRIGGER"
+          ],
+          "setup_family": null,
+          "trigger_level": 113.91000366210938,
+          "stop_reference": 110.54000091552734,
+          "notes": [
+            "Nearby trigger from prior day high at 113.91."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "TIGHT_RISK",
+            "GOOD_RR"
+          ],
+          "setup_family": null,
+          "trigger_level": 113.91000366210938,
+          "stop_reference": 110.54000091552734,
+          "notes": [
+            "Approximate entry 113.91, stop 110.54, risk 3.0%."
+          ]
+        }
+      ],
+      "source_error": ""
+    },
+    {
+      "ticker": "AMD",
+      "company": "Advanced Micro Devices",
+      "sector": "Information Technology",
+      "close": 542.52001953125,
+      "volume": 28701602.0,
+      "avg_volume": 37079630.1,
+      "rel_volume": 0.7740530831239333,
+      "detector_count": 7,
+      "detector_names": [
+        "RIGHT_SIDE_OF_BASE",
+        "POWER_EARNINGS_GAP_CATALYST_GAP",
+        "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+        "TREND_ALIGNMENT_EMA_RECLAIM",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY"
+      ],
+      "detector_confidence": "RIGHT_SIDE_OF_BASE=HIGH; POWER_EARNINGS_GAP_CATALYST_GAP=MEDIUM; POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION=HIGH; TREND_ALIGNMENT_EMA_RECLAIM=MEDIUM; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=LOW; RISK_REWARD_VIABILITY=MEDIUM",
+      "detector_tags": [
+        "ABOVE_8_21_50",
+        "BASE_MATURING",
+        "CATALYST_GAP",
+        "CONTROLLED_PULLBACK",
+        "GAP_HOLDING_HIGH",
+        "GOOD_RR",
+        "HIGHER_LOW_IN_BASE",
+        "LEADER_TREND",
+        "MILD_EXTENSION",
+        "NO_CLEAR_TRIGGER",
+        "POSSIBLE_BULL_FLAG",
+        "RIGHT_SIDE_OF_BASE",
+        "SHALLOW_RETRACE",
+        "SHALLOW_RIGHT_SIDE_PULLBACK",
+        "STOP_TOO_WIDE",
+        "WEDGE_COMPRESSION"
+      ],
+      "high_value_tags": [
+        "CATALYST_GAP",
+        "RIGHT_SIDE_OF_BASE"
+      ],
+      "warning_tags": [
+        "MILD_EXTENSION",
+        "NO_CLEAR_TRIGGER",
+        "STOP_TOO_WIDE"
+      ],
+      "setup_family": "Power gap/catalyst gap",
+      "trigger_level": 546.4400024414062,
+      "stop_reference": 426.04998779296875,
+      "interest_rank": 52.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Price is on the right side of a multi-week base/range.",
+        "Large gap up of 15.3% on elevated volume is still holding.",
+        "Prior impulse is digesting in a controlled pullback/compression area.",
+        "EMA stack is aligned 8 > 21 > 50 with price above the stack.",
+        "Close is 6.9% from EMA8.",
+        "No nearby clean prior-high/base trigger was found.",
+        "Approximate entry 542.52, stop 457.76, risk 15.6%.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "RIGHT_SIDE_OF_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "RIGHT_SIDE_OF_BASE",
+            "BASE_MATURING",
+            "HIGHER_LOW_IN_BASE",
+            "SHALLOW_RIGHT_SIDE_PULLBACK"
+          ],
+          "setup_family": "Right-side/base setups",
+          "trigger_level": 546.4400024414062,
+          "stop_reference": 426.04998779296875,
+          "notes": [
+            "Price is on the right side of a multi-week base/range."
+          ]
+        },
+        {
+          "name": "POWER_EARNINGS_GAP_CATALYST_GAP",
+          "confidence": "MEDIUM",
+          "tags": [
+            "CATALYST_GAP",
+            "GAP_HOLDING_HIGH"
+          ],
+          "setup_family": "Power gap/catalyst gap",
+          "trigger_level": 546.4400024414062,
+          "stop_reference": 416.32000732421875,
+          "notes": [
+            "Large gap up of 15.3% on elevated volume is still holding."
+          ]
+        },
+        {
+          "name": "POSSIBLE_BULL_FLAG_WEDGE_COMPRESSION",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_BULL_FLAG",
+            "CONTROLLED_PULLBACK",
+            "SHALLOW_RETRACE",
+            "WEDGE_COMPRESSION"
+          ],
+          "setup_family": "Right-side/base setups",
+          "trigger_level": 546.4400024414062,
+          "stop_reference": 426.04998779296875,
+          "notes": [
+            "Prior impulse is digesting in a controlled pullback/compression area."
+          ]
+        },
+        {
+          "name": "TREND_ALIGNMENT_EMA_RECLAIM",
+          "confidence": "MEDIUM",
+          "tags": [
+            "ABOVE_8_21_50",
+            "LEADER_TREND"
+          ],
+          "setup_family": "Trend/reclaim",
+          "trigger_level": 546.4400024414062,
+          "stop_reference": 457.7612597864779,
+          "notes": [
+            "EMA stack is aligned 8 > 21 > 50 with price above the stack."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "MILD_EXTENSION"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is 6.9% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "LOW",
+          "tags": [
+            "NO_CLEAR_TRIGGER"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "No nearby clean prior-high/base trigger was found."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "STOP_TOO_WIDE",
+            "GOOD_RR"
+          ],
+          "setup_family": null,
+          "trigger_level": 542.52001953125,
+          "stop_reference": 457.7612597864779,
+          "notes": [
+            "Approximate entry 542.52, stop 457.76, risk 15.6%."
+          ]
+        }
+      ],
+      "source_error": ""
+    },
+    {
+      "ticker": "MMM",
+      "company": "3M",
+      "sector": "Industrials",
+      "close": 151.64999389648438,
+      "volume": 1904046.0,
+      "avg_volume": 3887072.3,
+      "rel_volume": 0.489840644332754,
+      "detector_count": 7,
+      "detector_names": [
+        "TIGHT_RANGE_COMPRESSION",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "BREAKOUT_PROXIMITY",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY",
+        "FAILED_BREAKOUT_WARNING"
+      ],
+      "detector_confidence": "TIGHT_RANGE_COMPRESSION=HIGH; POSSIBLE_ACCUMULATION_BASE=HIGH; BREAKOUT_PROXIMITY=HIGH; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=MEDIUM; RISK_REWARD_VIABILITY=MEDIUM; FAILED_BREAKOUT_WARNING=MEDIUM",
+      "detector_tags": [
+        "BREAKOUT_FAILURE",
+        "CLEAR_TRIGGER",
+        "CLEAR_TRIGGER_NEARBY",
+        "DO_NOT_CHASE",
+        "EMERGING_BASE_RECLAIM",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "FAILED_BREAKOUT",
+        "GOOD_RR",
+        "GREEN_VOLUME_DOMINANCE",
+        "HIGH_VOLUME_REVERSAL_FROM_LOW",
+        "NEAR_8EMA_IDEAL",
+        "NEAR_BREAKOUT_TRIGGER",
+        "NEAR_TRIGGER",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "RANGE_CONTRACTION",
+        "SHOOTING_STAR_WARNING",
+        "TIGHT_10D_BASE",
+        "TIGHT_3D_BASE",
+        "TIGHT_5D_BASE",
+        "TIGHT_RISK",
+        "UPPER_WICK_SUPPLY"
+      ],
+      "high_value_tags": [
+        "FAILED_BREAKDOWN_RECLAIM",
+        "POSSIBLE_ACCUMULATION_BASE"
+      ],
+      "warning_tags": [
+        "BREAKOUT_FAILURE",
+        "DO_NOT_CHASE",
+        "FAILED_BREAKOUT",
+        "SHOOTING_STAR_WARNING",
+        "UPPER_WICK_SUPPLY"
+      ],
+      "setup_family": "Breakout/retest",
+      "trigger_level": 156.69000244140625,
+      "stop_reference": 150.18720105498176,
+      "interest_rank": 48.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Recent multi-day range is contracting.",
+        "Compression ranges: 3D 3.6% / 5D 4.0% / 10D 6.2%.",
+        "Possible accumulation only: prior decline has started to stabilize.",
+        "Nearest trigger is prior day high at 153.16, 1.0% from close.",
+        "Close is -0.2% from EMA8.",
+        "Nearby trigger from prior day high at 153.16.",
+        "Approximate entry 153.16, stop 150.19, risk 1.9%.",
+        "Failed breakout or heavy upper-wick supply warning fired.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "TIGHT_RANGE_COMPRESSION",
+          "confidence": "HIGH",
+          "tags": [
+            "TIGHT_3D_BASE",
+            "TIGHT_5D_BASE",
+            "TIGHT_10D_BASE",
+            "RANGE_CONTRACTION"
+          ],
+          "setup_family": "Inside-day compression",
+          "trigger_level": 156.69000244140625,
+          "stop_reference": 150.18720105498176,
+          "notes": [
+            "Recent multi-day range is contracting.",
+            "Compression ranges: 3D 3.6% / 5D 4.0% / 10D 6.2%."
+          ]
+        },
+        {
+          "name": "POSSIBLE_ACCUMULATION_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_ACCUMULATION_BASE",
+            "HIGH_VOLUME_REVERSAL_FROM_LOW",
+            "GREEN_VOLUME_DOMINANCE",
+            "FAILED_BREAKDOWN_RECLAIM",
+            "EMERGING_BASE_RECLAIM"
+          ],
+          "setup_family": "Possible accumulation/emerging reclaim",
+          "trigger_level": 156.69000244140625,
+          "stop_reference": 147.32000732421875,
+          "notes": [
+            "Possible accumulation only: prior decline has started to stabilize."
+          ]
+        },
+        {
+          "name": "BREAKOUT_PROXIMITY",
+          "confidence": "HIGH",
+          "tags": [
+            "NEAR_BREAKOUT_TRIGGER",
+            "CLEAR_TRIGGER_NEARBY",
+            "CLEAR_TRIGGER_NEARBY"
+          ],
+          "setup_family": "Breakout/retest",
+          "trigger_level": 153.16000366210938,
+          "stop_reference": 150.18720105498176,
+          "notes": [
+            "Nearest trigger is prior day high at 153.16, 1.0% from close."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "NEAR_8EMA_IDEAL"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is -0.2% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "CLEAR_TRIGGER",
+            "NEAR_TRIGGER"
+          ],
+          "setup_family": null,
+          "trigger_level": 153.16000366210938,
+          "stop_reference": 150.18720105498176,
+          "notes": [
+            "Nearby trigger from prior day high at 153.16."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "TIGHT_RISK",
+            "GOOD_RR"
+          ],
+          "setup_family": null,
+          "trigger_level": 153.16000366210938,
+          "stop_reference": 150.18720105498176,
+          "notes": [
+            "Approximate entry 153.16, stop 150.19, risk 1.9%."
+          ]
+        },
+        {
+          "name": "FAILED_BREAKOUT_WARNING",
+          "confidence": "MEDIUM",
+          "tags": [
+            "FAILED_BREAKOUT",
+            "DO_NOT_CHASE",
+            "SHOOTING_STAR_WARNING",
+            "UPPER_WICK_SUPPLY",
+            "BREAKOUT_FAILURE"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Failed breakout or heavy upper-wick supply warning fired."
+          ]
+        }
+      ],
+      "source_error": ""
+    },
+    {
+      "ticker": "ADBE",
+      "company": "Adobe Inc.",
+      "sector": "Information Technology",
+      "close": 256.239990234375,
+      "volume": 4851106.0,
+      "avg_volume": 4925295.3,
+      "rel_volume": 0.9849370859042705,
+      "detector_count": 6,
+      "detector_names": [
+        "POSSIBLE_ACCUMULATION_BASE",
+        "TREND_ALIGNMENT_EMA_RECLAIM",
+        "EXTENSION_CHASE_RISK",
+        "TRIGGER_CLARITY",
+        "RISK_REWARD_VIABILITY",
+        "FAILED_BREAKOUT_WARNING"
+      ],
+      "detector_confidence": "POSSIBLE_ACCUMULATION_BASE=HIGH; TREND_ALIGNMENT_EMA_RECLAIM=LOW; EXTENSION_CHASE_RISK=LOW; TRIGGER_CLARITY=LOW; RISK_REWARD_VIABILITY=MEDIUM; FAILED_BREAKOUT_WARNING=MEDIUM",
+      "detector_tags": [
+        "ABOVE_8_21_50",
+        "BREAKOUT_FAILURE",
+        "DO_NOT_CHASE",
+        "EMERGING_BASE_RECLAIM",
+        "FAILED_BREAKDOWN_RECLAIM",
+        "FAILED_BREAKOUT",
+        "GOOD_RR",
+        "GREEN_VOLUME_DOMINANCE",
+        "HIGH_VOLUME_REVERSAL_FROM_LOW",
+        "NEAR_8EMA_IDEAL",
+        "NO_CLEAR_TRIGGER",
+        "POSSIBLE_ACCUMULATION_BASE",
+        "TIGHT_RISK"
+      ],
+      "high_value_tags": [
+        "FAILED_BREAKDOWN_RECLAIM",
+        "POSSIBLE_ACCUMULATION_BASE"
+      ],
+      "warning_tags": [
+        "BREAKOUT_FAILURE",
+        "DO_NOT_CHASE",
+        "FAILED_BREAKOUT",
+        "NO_CLEAR_TRIGGER"
+      ],
+      "setup_family": "Possible accumulation/emerging reclaim",
+      "trigger_level": 275.44000244140625,
+      "stop_reference": 236.66000366210938,
+      "interest_rank": 29.0,
+      "chart_needed": true,
+      "reject_reason": "",
+      "notes": [
+        "Possible accumulation only: prior decline has started to stabilize.",
+        "Price has constructive EMA alignment or reclaim behavior.",
+        "Close is 0.3% from EMA8.",
+        "No nearby clean prior-high/base trigger was found.",
+        "Approximate entry 256.24, stop 250.96, risk 2.1%.",
+        "Failed breakout or heavy upper-wick supply warning fired.",
+        "Needs visual chart review; detector layer is not final setup approval."
+      ],
+      "chart_6m_path": "",
+      "chart_1y_path": "",
+      "hits": [
+        {
+          "name": "POSSIBLE_ACCUMULATION_BASE",
+          "confidence": "HIGH",
+          "tags": [
+            "POSSIBLE_ACCUMULATION_BASE",
+            "HIGH_VOLUME_REVERSAL_FROM_LOW",
+            "GREEN_VOLUME_DOMINANCE",
+            "FAILED_BREAKDOWN_RECLAIM",
+            "EMERGING_BASE_RECLAIM"
+          ],
+          "setup_family": "Possible accumulation/emerging reclaim",
+          "trigger_level": 275.44000244140625,
+          "stop_reference": 236.66000366210938,
+          "notes": [
+            "Possible accumulation only: prior decline has started to stabilize."
+          ]
+        },
+        {
+          "name": "TREND_ALIGNMENT_EMA_RECLAIM",
+          "confidence": "LOW",
+          "tags": [
+            "ABOVE_8_21_50"
+          ],
+          "setup_family": "Trend/reclaim",
+          "trigger_level": 275.44000244140625,
+          "stop_reference": 250.9646559222524,
+          "notes": [
+            "Price has constructive EMA alignment or reclaim behavior."
+          ]
+        },
+        {
+          "name": "EXTENSION_CHASE_RISK",
+          "confidence": "LOW",
+          "tags": [
+            "NEAR_8EMA_IDEAL"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Close is 0.3% from EMA8."
+          ]
+        },
+        {
+          "name": "TRIGGER_CLARITY",
+          "confidence": "LOW",
+          "tags": [
+            "NO_CLEAR_TRIGGER"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "No nearby clean prior-high/base trigger was found."
+          ]
+        },
+        {
+          "name": "RISK_REWARD_VIABILITY",
+          "confidence": "MEDIUM",
+          "tags": [
+            "TIGHT_RISK",
+            "GOOD_RR"
+          ],
+          "setup_family": null,
+          "trigger_level": 256.239990234375,
+          "stop_reference": 250.9646559222524,
+          "notes": [
+            "Approximate entry 256.24, stop 250.96, risk 2.1%."
+          ]
+        },
+        {
+          "name": "FAILED_BREAKOUT_WARNING",
+          "confidence": "MEDIUM",
+          "tags": [
+            "FAILED_BREAKOUT",
+            "DO_NOT_CHASE",
+            "BREAKOUT_FAILURE"
+          ],
+          "setup_family": null,
+          "trigger_level": null,
+          "stop_reference": null,
+          "notes": [
+            "Failed breakout or heavy upper-wick supply warning fired."
+          ]
+        }
+      ],
+      "source_error": ""
+    }
+  ]
+}

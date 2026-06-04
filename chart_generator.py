@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -34,6 +34,16 @@ def _clean_symbol(symbol: str) -> str:
         raise ValueError("symbol must be a non-empty string.")
 
     return symbol.strip().upper().replace("/", "-")
+
+
+def _clean_filename_part(value: str) -> str:
+    """Return a short filesystem-friendly filename component."""
+    cleaned = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in str(value).strip()
+    )
+    cleaned = "_".join(part for part in cleaned.split("_") if part)
+    return cleaned[:80]
 
 
 def _prepare_chart_data(df: pd.DataFrame, lookback: int) -> pd.DataFrame:
@@ -82,7 +92,14 @@ def _latest_date_stamp(chart_df: pd.DataFrame) -> str:
 
 
 def generate_chart_image(
-    symbol: str, df: pd.DataFrame, output_dir: str = "charts", lookback: int = 90
+    symbol: str,
+    df: pd.DataFrame,
+    output_dir: str = "charts",
+    lookback: int = 90,
+    trigger_level: Optional[float] = None,
+    stop_reference: Optional[float] = None,
+    filename_suffix: str = "",
+    title_suffix: str = "",
 ) -> str:
     """
     Generate a readable daily candlestick chart PNG with volume and EMA overlays.
@@ -94,7 +111,9 @@ def generate_chart_image(
     output_path.mkdir(parents=True, exist_ok=True)
 
     date_stamp = _latest_date_stamp(chart_df)
-    filepath = output_path / f"{symbol_clean}_{date_stamp}.png"
+    suffix = _clean_filename_part(filename_suffix)
+    suffix_text = f"_{suffix}" if suffix else ""
+    filepath = output_path / f"{symbol_clean}_{date_stamp}{suffix_text}.png"
 
     ema_plots = [
         mpf.make_addplot(chart_df["EMA8"], color="#1f77b4", width=1.2),
@@ -104,6 +123,29 @@ def generate_chart_image(
 
     style = mpf.make_mpf_style(base_mpf_style="yahoo", gridstyle=":", y_on_right=False)
     title = f"{symbol_clean} Daily Chart - {date_stamp}"
+    if title_suffix:
+        title = f"{title} | {title_suffix}"
+
+    hline_levels = []
+    hline_colors = []
+    if trigger_level is not None:
+        hline_levels.append(float(trigger_level))
+        hline_colors.append("#7f3fbf")
+    if stop_reference is not None:
+        hline_levels.append(float(stop_reference))
+        hline_colors.append("#d62728")
+    hlines = None
+    if hline_levels:
+        hlines = {
+            "hlines": hline_levels,
+            "colors": hline_colors,
+            "linestyle": "--",
+            "linewidths": 1.0,
+        }
+
+    plot_kwargs = {}
+    if hlines is not None:
+        plot_kwargs["hlines"] = hlines
 
     mpf.plot(
         chart_df,
@@ -118,9 +160,52 @@ def generate_chart_image(
         tight_layout=True,
         warn_too_much_data=lookback + 20,
         savefig={"fname": str(filepath), "dpi": 140, "bbox_inches": "tight"},
+        **plot_kwargs,
     )
 
     return str(filepath)
+
+
+def generate_detector_chart_set(
+    symbol: str,
+    df: pd.DataFrame,
+    output_dir: str = "charts/detectors",
+    trigger_level: Optional[float] = None,
+    stop_reference: Optional[float] = None,
+    tag_summary: str = "",
+) -> dict[str, str]:
+    """
+    Generate standardized detector review charts.
+
+    Outputs:
+    - Daily 6M equivalent, roughly 126 trading bars.
+    - Daily 1Y equivalent, roughly 252 trading bars.
+    """
+    suffix_seed = tag_summary.replace(";", "_").replace(",", "_")
+    suffix = _clean_filename_part(suffix_seed)
+    title_suffix = "Detector review" if tag_summary else ""
+    return {
+        "daily_6m": generate_chart_image(
+            symbol,
+            df,
+            output_dir=output_dir,
+            lookback=126,
+            trigger_level=trigger_level,
+            stop_reference=stop_reference,
+            filename_suffix=f"6M_{suffix}" if suffix else "6M",
+            title_suffix=title_suffix,
+        ),
+        "daily_1y": generate_chart_image(
+            symbol,
+            df,
+            output_dir=output_dir,
+            lookback=252,
+            trigger_level=trigger_level,
+            stop_reference=stop_reference,
+            filename_suffix=f"1Y_{suffix}" if suffix else "1Y",
+            title_suffix=title_suffix,
+        ),
+    }
 
 
 if __name__ == "__main__":
