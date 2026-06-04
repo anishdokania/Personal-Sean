@@ -2796,7 +2796,6 @@ def run_analysis_from_audit(
 
 
 def run_premarket_scan(
-    top_n_sectors: int = 5,
     max_ai_analyses: int = MAX_AI_ANALYSES,
     max_candidates_to_score: Optional[int] = MAX_CANDIDATES_TO_SCORE,
     output_dir: str = "reports",
@@ -2850,11 +2849,8 @@ def run_premarket_scan(
 
     try:
         candidates = scan_candidates(
-            top_n_sectors=top_n_sectors,
             universe_mode=universe_mode,
             max_universe_size=max_universe_size,
-            apply_basic_filters=False,
-            apply_sector_filter=False,
         )
     except Exception as exc:
         print(f"Candidate scan failed: {exc}", flush=True)
@@ -3233,12 +3229,6 @@ def parse_args() -> argparse.Namespace:
         help="Directory for generated reports and audit CSV files.",
     )
     parser.add_argument(
-        "--top-n-sectors",
-        type=int,
-        default=5,
-        help="Number of leading sectors to use in sp500 mode.",
-    )
-    parser.add_argument(
         "--analyze-from-audit",
         default=None,
         help=(
@@ -3308,7 +3298,6 @@ def main() -> None:
                 flush=True,
             )
         filepath = run_premarket_scan(
-            top_n_sectors=args.top_n_sectors,
             max_ai_analyses=args.max_ai_analyses,
             max_candidates_to_score=args.max_candidates_to_score,
             output_dir=args.output_dir,

@@ -8,3 +8,5 @@ venv/
 .mypy_cache/
 .ruff_cache/
 *.log
+reports/
+charts/

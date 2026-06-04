@@ -4,8 +4,6 @@ numpy
 requests
 python-dotenv
 anthropic
-streamlit
-plotly
 lxml
 matplotlib
 mplfinance
