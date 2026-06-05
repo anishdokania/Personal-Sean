@@ -1,5 +1,7 @@
 .DS_Store
 .env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 .venv/
@@ -10,3 +12,5 @@ venv/
 *.log
 reports/
 charts/
+strategy_sources/*
+!strategy_sources/README.md

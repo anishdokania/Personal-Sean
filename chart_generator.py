@@ -208,6 +208,31 @@ def generate_detector_chart_set(
     }
 
 
+def generate_haiku_triage_chart(
+    symbol: str,
+    df: pd.DataFrame,
+    output_dir: str = "charts/haiku_triage",
+    trigger_level: Optional[float] = None,
+    stop_reference: Optional[float] = None,
+) -> str:
+    """
+    Generate the single standardized chart used by Haiku chart triage.
+
+    This intentionally produces only one 6M daily chart for first-pass visual
+    triage, instead of the detector layer's 6M + 1Y chart set.
+    """
+    return generate_chart_image(
+        symbol,
+        df,
+        output_dir=output_dir,
+        lookback=126,
+        trigger_level=trigger_level,
+        stop_reference=stop_reference,
+        filename_suffix="haiku_6M",
+        title_suffix="Haiku triage",
+    )
+
+
 if __name__ == "__main__":
     from data_fetcher import fetch_stock_data
 

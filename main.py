@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -25,9 +27,17 @@ from claude_analyzer import (
 )
 from data_fetcher import fetch_stock_data
 from detector_models import DetectorCandidate
-from detector_report import save_detector_outputs
+from detector_report import detector_candidates_to_dataframe, save_detector_outputs
 from setup_detectors import evaluate_detector_candidates
 from focus_structure import evaluate_focus_structure
+from haiku_chart_triage import (
+    DEFAULT_HAIKU_CHART_DIR,
+    DEFAULT_HAIKU_CHART_TIMEFRAME,
+    DEFAULT_HAIKU_WORKERS,
+    DEFAULT_PROMPTS_DIR,
+    DEFAULT_STRATEGY_SOURCE_DIR,
+    run_haiku_chart_triage,
+)
 from report import (
     format_sector_leadership_section,
     format_market_context_section,
@@ -111,6 +121,45 @@ AUDIT_CANDIDATE_FIELDS = [
     "PreferredEntryStyle",
     "ClassificationReason",
     "GateFailureReasons",
+]
+PRIMARY_GATE_OUTPUT_COLUMNS = [
+    "Symbol",
+    "Company",
+    "Sector",
+    "Exchange",
+    "price",
+    "sma21",
+    "sma50",
+    "market_cap",
+    "atr",
+    "avg_volume",
+    "Close",
+    "SMA20",
+    "AvgVolume20",
+    "DollarVolume20",
+    "AboveSMA20",
+    "passes_price_sma21",
+    "passes_price_sma50",
+    "passes_price_min",
+    "passes_market_cap",
+    "passes_atr",
+    "passes_avg_volume",
+    "primary_gate_pass",
+    "primary_gate_fail_reasons",
+    "sector_name",
+    "sector_etf",
+    "sector_rank",
+    "sector_score",
+    "sector_perf_1w",
+    "sector_perf_1m",
+    "sector_perf_3m",
+    "sector_perf_6m",
+    "sector_perf_1y",
+    "stock_perf_1w",
+    "stock_perf_1m",
+    "stock_perf_3m",
+    "relative_strength_1m",
+    "relative_strength_3m",
 ]
 SECTOR_ALIASES = {
     "technology": "Technology",
@@ -754,6 +803,171 @@ def apply_primary_universe_gate_to_candidates(
     return survivors
 
 
+def _primary_gate_output_frame(rows: Any) -> pd.DataFrame:
+    """Return a CSV-safe primary gate output frame without bulky OHLCV objects."""
+    source = rows.copy() if isinstance(rows, pd.DataFrame) else pd.DataFrame(rows or [])
+    if source.empty:
+        return pd.DataFrame(columns=PRIMARY_GATE_OUTPUT_COLUMNS)
+
+    cleaned = source.drop(columns=["ohlcv"], errors="ignore").copy()
+    for column in PRIMARY_GATE_OUTPUT_COLUMNS:
+        if column not in cleaned.columns:
+            cleaned[column] = None
+
+    return cleaned.loc[:, PRIMARY_GATE_OUTPUT_COLUMNS]
+
+
+def _primary_gate_fail_reason_counts(frame: pd.DataFrame) -> Counter:
+    """Count semicolon-delimited primary hard-gate failure reasons."""
+    counts: Counter = Counter()
+    if frame.empty or "primary_gate_fail_reasons" not in frame.columns:
+        return counts
+
+    failed = frame[~frame["primary_gate_pass"].apply(_as_bool)].copy()
+    for value in failed["primary_gate_fail_reasons"].fillna("").tolist():
+        for reason in str(value).split(";"):
+            reason_text = reason.strip()
+            if reason_text:
+                counts[reason_text] += 1
+
+    return counts
+
+
+def build_primary_gate_report_markdown(
+    primary_gate_results: Any,
+    generated_at: Optional[datetime] = None,
+) -> str:
+    """Build a concise Markdown summary of primary hard-gate filtering."""
+    generated_at = generated_at or datetime.now()
+    frame = _primary_gate_output_frame(primary_gate_results)
+    if frame.empty:
+        return (
+            "# Primary Hard Gate Report\n\n"
+            f"Generated: {generated_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+            "No primary hard-gate rows were available.\n"
+        )
+
+    survivors = frame[frame["primary_gate_pass"].apply(_as_bool)].copy()
+    rejected = frame[~frame["primary_gate_pass"].apply(_as_bool)].copy()
+    survivor_sort_columns = [
+        column
+        for column in ["DollarVolume20", "avg_volume", "price"]
+        if column in survivors.columns
+    ]
+    if survivor_sort_columns and not survivors.empty:
+        survivors = survivors.sort_values(
+            by=survivor_sort_columns,
+            ascending=[False] * len(survivor_sort_columns),
+        )
+
+    lines = [
+        "# Primary Hard Gate Report",
+        "",
+        f"Generated: {generated_at.strftime('%Y-%m-%d %H:%M')}",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Count |",
+        "|---|---:|",
+        f"| Symbols evaluated | {len(frame)} |",
+        f"| Primary hard-gate survivors | {len(survivors)} |",
+        f"| Primary hard-gate rejected | {len(rejected)} |",
+        "",
+        "## Top Survivors For Selection",
+        "",
+    ]
+
+    if survivors.empty:
+        lines.append("- None")
+    else:
+        for _, row in survivors.head(100).iterrows():
+            lines.append(
+                "- "
+                f"{row.get('Symbol')} | "
+                f"{row.get('Company') or ''} | "
+                f"price {_format_price_for_report(row.get('price'))} | "
+                f"avg vol {_format_number_for_report(row.get('avg_volume'))} | "
+                f"dollar vol {_format_number_for_report(row.get('DollarVolume20'))} | "
+                f"ATR {_format_price_for_report(row.get('atr'))} | "
+                f"sector {row.get('Sector') or row.get('sector_name') or 'Unknown'}"
+            )
+
+    fail_counts = _primary_gate_fail_reason_counts(frame)
+    lines.extend(["", "## Top Rejection Reasons", ""])
+    if not fail_counts:
+        lines.append("- None")
+    else:
+        for reason, count in fail_counts.most_common(25):
+            lines.append(f"- {reason}: {count}")
+
+    lines.extend(
+        [
+            "",
+            "## Notes",
+            "",
+            "- The survivors CSV is the post-primary candidate pool before detector and Haiku review.",
+            "- The all-rows CSV includes each primary hard-gate pass/fail boolean and failure reason.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _format_number_for_report(value: Any) -> str:
+    """Format large numeric diagnostics for Markdown."""
+    numeric = _as_float(value)
+    if numeric is None:
+        return "N/A"
+    if abs(numeric) >= 1_000_000_000:
+        return f"{numeric / 1_000_000_000:.2f}B"
+    if abs(numeric) >= 1_000_000:
+        return f"{numeric / 1_000_000:.2f}M"
+    if abs(numeric) >= 1_000:
+        return f"{numeric / 1_000:.1f}K"
+    return f"{numeric:.0f}"
+
+
+def _format_price_for_report(value: Any) -> str:
+    """Format optional price values for Markdown."""
+    numeric = _as_float(value)
+    return f"{numeric:.2f}" if numeric is not None else "N/A"
+
+
+def save_primary_gate_outputs(
+    primary_gate_results: Any,
+    output_dir: str = "reports",
+    save_all_csv: bool = False,
+    save_report: bool = False,
+) -> dict[str, str]:
+    """Save primary hard-gate survivor CSV and optional diagnostics."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    generated_at = datetime.now()
+    timestamp = generated_at.strftime("%Y-%m-%d_%H%M")
+    frame = _primary_gate_output_frame(primary_gate_results)
+    survivors = frame[frame["primary_gate_pass"].apply(_as_bool)].copy()
+
+    all_csv_path = output_path / f"primary_gate_audit_{timestamp}.csv"
+    survivors_csv_path = output_path / f"primary_gate_survivors_{timestamp}.csv"
+    report_path = output_path / f"primary_gate_report_{timestamp}.md"
+
+    survivors.to_csv(survivors_csv_path, index=False)
+    paths = {"survivors_csv": str(survivors_csv_path)}
+
+    if save_all_csv:
+        frame.to_csv(all_csv_path, index=False)
+        paths["all_csv"] = str(all_csv_path)
+
+    if save_report:
+        report_path.write_text(
+            build_primary_gate_report_markdown(frame, generated_at=generated_at),
+            encoding="utf-8",
+        )
+        paths["report"] = str(report_path)
+
+    return paths
+
+
 def get_focus_gate_failure_reasons(row: Any) -> list[str]:
     """Return specific reasons a scored row fails the focus quality gate."""
     failure_reasons: list[str] = []
@@ -1215,6 +1429,19 @@ def run_post_primary_detector_stage(
     return output_paths
 
 
+def save_detector_annotation_csv(
+    detector_candidates: list[DetectorCandidate],
+    output_dir: str = "reports",
+) -> str:
+    """Save detector metadata hints for Haiku without report/json artifacts."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    filepath = output_path / f"detector_annotations_{timestamp}.csv"
+    detector_candidates_to_dataframe(detector_candidates).to_csv(filepath, index=False)
+    return str(filepath)
+
+
 def build_combined_audit_candidates(
     primary_gate_results: Any, scored_candidates: Any
 ) -> pd.DataFrame:
@@ -1405,12 +1632,12 @@ def score_sector_alignment(row: Any) -> float:
 
 
 def select_candidates_for_ai(
-    candidates_df: pd.DataFrame, max_ai_analyses: int = MAX_AI_ANALYSES
+    candidates_df: pd.DataFrame, max_ai_analyses: Optional[int] = MAX_AI_ANALYSES
 ) -> pd.DataFrame:
     """
     Add deterministic pre-AI scores and return the top candidates for Claude.
     """
-    if max_ai_analyses <= 0:
+    if max_ai_analyses is not None and max_ai_analyses <= 0:
         raise ValueError("max_ai_analyses must be a positive integer.")
 
     if candidates_df is None or candidates_df.empty:
@@ -1419,14 +1646,13 @@ def select_candidates_for_ai(
     selected = candidates_df.copy()
     selected["PreAIScore"] = selected.apply(score_candidate_pre_ai, axis=1)
 
-    return (
-        selected.sort_values(
-            by=["PreAIScore", "AvgVolume20", "Close"],
-            ascending=[False, False, False],
-        )
-        .head(max_ai_analyses)
-        .reset_index(drop=True)
+    ranked = selected.sort_values(
+        by=["PreAIScore", "AvgVolume20", "Close"],
+        ascending=[False, False, False],
     )
+    if max_ai_analyses is None:
+        return ranked.reset_index(drop=True)
+    return ranked.head(max_ai_analyses).reset_index(drop=True)
 
 
 def _levels_on_side(levels: Any, current_price: float, side: str) -> list[float]:
@@ -1569,13 +1795,13 @@ def score_technicals_pre_ai(symbol: str, candidate_row: Any, technicals: dict[st
 
 def build_technical_shortlist(
     candidates_df: pd.DataFrame,
-    max_ai_analyses: int = MAX_AI_ANALYSES,
+    max_ai_analyses: Optional[int] = MAX_AI_ANALYSES,
     max_candidates_to_score: Optional[int] = MAX_CANDIDATES_TO_SCORE,
 ) -> pd.DataFrame:
     """
     Score hard-gate survivors with setup layers and return the Claude shortlist.
     """
-    if max_ai_analyses < 0:
+    if max_ai_analyses is not None and max_ai_analyses < 0:
         raise ValueError("max_ai_analyses must be zero or a positive integer.")
     if max_candidates_to_score is not None and max_candidates_to_score <= 0:
         raise ValueError("max_candidates_to_score must be a positive integer.")
@@ -1710,7 +1936,10 @@ def build_technical_shortlist(
         ascending=[False, False, False, False, False, False, False, False, False],
     ).reset_index(drop=True)
 
-    shortlist = qualified_results.head(max_ai_analyses).reset_index(drop=True)
+    if max_ai_analyses is None:
+        shortlist = qualified_results.reset_index(drop=True)
+    else:
+        shortlist = qualified_results.head(max_ai_analyses).reset_index(drop=True)
     shortlist.attrs["attempted_count"] = len(candidates_to_score)
     shortlist.attrs["scored_count"] = len(technical_results)
     shortlist.attrs["qualified_count"] = len(qualified_results)
@@ -1992,11 +2221,34 @@ def _format_elapsed(elapsed_seconds: float) -> str:
     return f"{minutes} minutes {seconds} seconds"
 
 
+def _format_ai_limit(max_ai_analyses: Optional[int]) -> str:
+    """Return display text for the Claude analysis limit."""
+    return "all" if max_ai_analyses is None else str(max_ai_analyses)
+
+
+def _parse_max_ai_analyses(value: str) -> Optional[int]:
+    """Parse --max-ai-analyses, accepting an integer cap or 'all'."""
+    text = str(value).strip().lower()
+    if text == "all":
+        return None
+    try:
+        parsed = int(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "max AI analyses must be a non-negative integer or 'all'."
+        ) from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError(
+            "max AI analyses must be a non-negative integer or 'all'."
+        )
+    return parsed
+
+
 def load_candidates_from_audit(
-    audit_path: str, max_ai_analyses: int = MAX_AI_ANALYSES
+    audit_path: str, max_ai_analyses: Optional[int] = MAX_AI_ANALYSES
 ) -> list[dict[str, Any]]:
     """Load passing focus-gate candidates from a saved audit CSV."""
-    if max_ai_analyses < 0:
+    if max_ai_analyses is not None and max_ai_analyses < 0:
         raise ValueError("max_ai_analyses must be zero or a positive integer.")
 
     path = Path(audit_path).expanduser()
@@ -2028,7 +2280,7 @@ def load_candidates_from_audit(
     passed = passed.sort_values(
         by="_AuditSortFinalPreAIScore", ascending=False
     ).reset_index(drop=True)
-    if max_ai_analyses > 0:
+    if max_ai_analyses is not None and max_ai_analyses > 0:
         passed = passed.head(max_ai_analyses).reset_index(drop=True)
 
     candidates: list[dict[str, Any]] = []
@@ -2350,11 +2602,11 @@ def attach_setup_judge(
 
 def apply_setup_judge_to_candidates(
     enriched_candidates: list[dict[str, Any]],
-    max_ai_analyses: int = MAX_AI_ANALYSES,
+    max_ai_analyses: Optional[int] = MAX_AI_ANALYSES,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Run Setup Judge on refreshed deterministic pass candidates."""
     selected = list(enriched_candidates or [])
-    if max_ai_analyses > 0:
+    if max_ai_analyses is not None and max_ai_analyses > 0:
         selected = selected[:max_ai_analyses]
 
     stats = {"calls": 0, "parse_successes": 0, "failures": 0}
@@ -2449,14 +2701,14 @@ def _build_setup_judge_veto_analysis(
 
 def run_analysis_from_audit(
     audit_path: str,
-    max_ai_analyses: int = MAX_AI_ANALYSES,
+    max_ai_analyses: Optional[int] = MAX_AI_ANALYSES,
     output_dir: str = "reports",
     dry_run: bool = False,
     use_setup_judge: bool = False,
 ) -> str:
     """Run Claude or deterministic-only analysis from a saved focus gate audit."""
     start_time = time.perf_counter()
-    if max_ai_analyses < 0:
+    if max_ai_analyses is not None and max_ai_analyses < 0:
         raise ValueError("max_ai_analyses must be zero or a positive integer.")
 
     def finish(filepath: str) -> str:
@@ -2469,7 +2721,7 @@ def run_analysis_from_audit(
     print("Configuration:", flush=True)
     print("- Mode: analyze_from_audit", flush=True)
     print(f"- Audit path: {audit_path}", flush=True)
-    print(f"- Max AI analyses cap: {max_ai_analyses}", flush=True)
+    print(f"- Max AI analyses cap: {_format_ai_limit(max_ai_analyses)}", flush=True)
     print(f"- Dry run: {dry_run}", flush=True)
     print(f"- Output dir: {output_dir}", flush=True)
     if use_setup_judge:
@@ -2796,7 +3048,7 @@ def run_analysis_from_audit(
 
 
 def run_premarket_scan(
-    max_ai_analyses: int = MAX_AI_ANALYSES,
+    max_ai_analyses: Optional[int] = MAX_AI_ANALYSES,
     max_candidates_to_score: Optional[int] = MAX_CANDIDATES_TO_SCORE,
     output_dir: str = "reports",
     universe_mode: str = UNIVERSE_MODE,
@@ -2804,13 +3056,25 @@ def run_premarket_scan(
     dry_run: bool = False,
     generate_detector_charts: bool = GENERATE_DETECTOR_CHARTS,
     detector_chart_limit: Optional[int] = DETECTOR_CHART_LIMIT,
+    haiku_chart_triage: bool = False,
+    haiku_triage_limit: Optional[int] = None,
+    haiku_workers: int = DEFAULT_HAIKU_WORKERS,
+    haiku_review_source: str = "priority",
+    haiku_chart_timeframe: str = DEFAULT_HAIKU_CHART_TIMEFRAME,
+    haiku_chart_only_6m: bool = True,
+    skip_haiku_cache: bool = False,
+    haiku_prompts_dir: str = str(DEFAULT_PROMPTS_DIR),
+    strategy_source_dir: str = str(DEFAULT_STRATEGY_SOURCE_DIR),
+    haiku_chart_dir: str = str(DEFAULT_HAIKU_CHART_DIR),
+    save_primary_audit: bool = False,
+    save_primary_report: bool = False,
 ) -> str:
     """
     Run the end-to-end MVP scanner and save a Markdown premarket report.
     """
     start_time = time.perf_counter()
     effective_max_ai_analyses = 0 if dry_run else max_ai_analyses
-    if effective_max_ai_analyses < 0:
+    if effective_max_ai_analyses is not None and effective_max_ai_analyses < 0:
         raise ValueError("max_ai_analyses must be zero or a positive integer.")
 
     def finish(filepath: str) -> str:
@@ -2829,11 +3093,16 @@ def run_premarket_scan(
         else str(max_candidates_to_score)
     )
     print(f"- Max candidates to score: {score_limit_text}", flush=True)
-    print(f"- Max AI analyses cap: {effective_max_ai_analyses}", flush=True)
+    print(f"- Max AI analyses cap: {_format_ai_limit(effective_max_ai_analyses)}", flush=True)
     print(f"- Dry run: {dry_run}", flush=True)
     print(f"- Generate detector charts: {generate_detector_charts}", flush=True)
+    print(f"- Haiku chart triage: {haiku_chart_triage}", flush=True)
     if detector_chart_limit is not None:
         print(f"- Detector chart limit: {detector_chart_limit}", flush=True)
+    if haiku_chart_triage:
+        print(f"- Haiku review source: {haiku_review_source}", flush=True)
+        print(f"- Haiku triage limit: {haiku_triage_limit if haiku_triage_limit is not None else 'all selected'}", flush=True)
+        print(f"- Haiku workers: {haiku_workers}", flush=True)
     print(f"- Output dir: {output_dir}", flush=True)
     if dry_run:
         print("Dry run enabled: Claude will not be called.", flush=True)
@@ -2914,6 +3183,26 @@ def run_premarket_scan(
     )
     print(f"Hard gate survivors: {hard_gate_survivors}", flush=True)
     print(f"Hard gate rejected: {hard_gate_rejected}", flush=True)
+    primary_gate_paths = save_primary_gate_outputs(
+        primary_gate_results,
+        output_dir=output_dir,
+        save_all_csv=save_primary_audit,
+        save_report=save_primary_report,
+    )
+    print(
+        f"Primary gate survivors CSV saved: {primary_gate_paths.get('survivors_csv')}",
+        flush=True,
+    )
+    if primary_gate_paths.get("all_csv"):
+        print(
+            f"Primary gate all-rows CSV saved: {primary_gate_paths.get('all_csv')}",
+            flush=True,
+        )
+    if primary_gate_paths.get("report"):
+        print(
+            f"Primary gate report saved: {primary_gate_paths.get('report')}",
+            flush=True,
+        )
 
     if primary_survivors.empty:
         print("No symbols passed the primary hard universe gate.", flush=True)
@@ -2961,6 +3250,23 @@ def run_premarket_scan(
     )
     print(f"Detector stage saved CSV: {detector_paths.get('csv')}", flush=True)
     print(f"Detector stage saved report: {detector_paths.get('report')}", flush=True)
+    if haiku_chart_triage:
+        print("Running Haiku chart triage from detector candidates...", flush=True)
+        haiku_paths = run_haiku_chart_triage(
+            source_path=detector_paths.get("csv"),
+            output_dir=output_dir,
+            review_source=haiku_review_source,
+            limit=haiku_triage_limit,
+            workers=haiku_workers,
+            chart_timeframe=haiku_chart_timeframe,
+            chart_only_6m=haiku_chart_only_6m,
+            dry_run=dry_run,
+            skip_prompt_cache=skip_haiku_cache,
+            prompts_dir=haiku_prompts_dir,
+            strategy_source_dir=strategy_source_dir,
+            chart_output_dir=haiku_chart_dir,
+        )
+        print(f"Haiku triage report saved: {haiku_paths.get('report')}", flush=True)
 
     print("Building technical and focus-structure shortlist...", flush=True)
     selected_candidates = build_technical_shortlist(
@@ -3186,10 +3492,161 @@ def run_premarket_scan(
     return finish(filepath)
 
 
+def run_chart_ai_scan(
+    output_dir: str = "reports",
+    universe_mode: str = UNIVERSE_MODE,
+    max_universe_size: Optional[int] = MAX_UNIVERSE_SIZE,
+    dry_run: bool = False,
+    haiku_triage_limit: Optional[int] = None,
+    haiku_workers: int = DEFAULT_HAIKU_WORKERS,
+    haiku_chart_timeframe: str = DEFAULT_HAIKU_CHART_TIMEFRAME,
+    skip_haiku_cache: bool = False,
+    haiku_prompts_dir: str = str(DEFAULT_PROMPTS_DIR),
+    strategy_source_dir: str = str(DEFAULT_STRATEGY_SOURCE_DIR),
+    haiku_chart_dir: str = str(DEFAULT_HAIKU_CHART_DIR),
+    save_primary_audit: bool = False,
+    save_primary_report: bool = False,
+) -> str:
+    """
+    Run the default chart-AI flow: hard gate, detector hints, Haiku chart review.
+    """
+    start_time = time.perf_counter()
+
+    def finish(filepath: str) -> str:
+        elapsed = time.perf_counter() - start_time
+        print(f"Final output path: {filepath}", flush=True)
+        print(f"Total runtime: {_format_elapsed(elapsed)}", flush=True)
+        return filepath
+
+    print("Starting chart AI scan...", flush=True)
+    print("Configuration:", flush=True)
+    print(f"- Universe mode: {universe_mode}", flush=True)
+    print(f"- Max universe size: {max_universe_size}", flush=True)
+    print(f"- Haiku triage limit: {haiku_triage_limit if haiku_triage_limit is not None else 'all primary survivors'}", flush=True)
+    print(f"- Haiku workers: {haiku_workers}", flush=True)
+    print(f"- Dry run: {dry_run}", flush=True)
+    print(f"- Output dir: {output_dir}", flush=True)
+    if dry_run:
+        print("Dry run enabled: Claude Haiku will not be called.", flush=True)
+
+    print("Calculating sector leadership...", flush=True)
+    sector_leadership = load_sector_leadership_table()
+    print("Loading symbol rows for primary hard gate...", flush=True)
+
+    try:
+        candidates = scan_candidates(
+            universe_mode=universe_mode,
+            max_universe_size=max_universe_size,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Candidate scan failed: {exc}") from exc
+
+    raw_universe_count = candidates.attrs.get("raw_universe_count")
+    scanned_universe_count = candidates.attrs.get("scanned_universe_count")
+    if raw_universe_count is not None:
+        print(f"Raw universe count: {raw_universe_count}", flush=True)
+    if scanned_universe_count is not None:
+        print(f"Symbols scanned from universe: {scanned_universe_count}", flush=True)
+
+    scanned_count = len(candidates)
+    print(f"Total symbols scanned: {scanned_count}", flush=True)
+    print("Applying primary hard universe gate...", flush=True)
+    primary_survivors = apply_primary_universe_gate_to_candidates(
+        candidates, sector_leadership
+    )
+    primary_gate_results = primary_survivors.attrs.get(
+        "primary_gate_results", pd.DataFrame()
+    )
+    hard_gate_survivors = primary_survivors.attrs.get(
+        "primary_gate_survivor_count", len(primary_survivors)
+    )
+    hard_gate_rejected = primary_survivors.attrs.get(
+        "primary_gate_rejected_count", scanned_count - len(primary_survivors)
+    )
+    print(f"Hard gate survivors: {hard_gate_survivors}", flush=True)
+    print(f"Hard gate rejected: {hard_gate_rejected}", flush=True)
+
+    primary_gate_paths = save_primary_gate_outputs(
+        primary_gate_results,
+        output_dir=output_dir,
+        save_all_csv=save_primary_audit,
+        save_report=save_primary_report,
+    )
+    survivor_csv = primary_gate_paths.get("survivors_csv")
+    print(f"Primary gate survivors CSV saved: {survivor_csv}", flush=True)
+    if primary_gate_paths.get("all_csv"):
+        print(f"Primary gate all-rows CSV saved: {primary_gate_paths.get('all_csv')}", flush=True)
+    if primary_gate_paths.get("report"):
+        print(f"Primary gate report saved: {primary_gate_paths.get('report')}", flush=True)
+
+    if not survivor_csv or primary_survivors.empty:
+        print("No symbols passed the primary hard universe gate.", flush=True)
+        return finish(survivor_csv or "")
+
+    print("Running setup detectors as Haiku metadata hints...", flush=True)
+    detector_candidates, detector_failures = evaluate_detector_candidates(primary_survivors)
+    detector_hits_count = sum(
+        1 for candidate in detector_candidates if candidate.detector_count > 0
+    )
+    chart_needed_count = sum(
+        1 for candidate in detector_candidates if candidate.chart_needed
+    )
+    rejected_count = sum(
+        1 for candidate in detector_candidates if candidate.reject_reason
+    )
+    detector_csv = save_detector_annotation_csv(
+        detector_candidates,
+        output_dir=output_dir,
+    )
+    print(f"Detector annotations evaluated: {len(detector_candidates)}", flush=True)
+    print(f"Detector hits: {detector_hits_count}", flush=True)
+    print(f"Detector chart-needed hints: {chart_needed_count}", flush=True)
+    print(f"Detector obvious rejects: {rejected_count}", flush=True)
+    if detector_failures:
+        print(f"Detector data failures: {len(detector_failures)}", flush=True)
+    print(f"Detector annotations CSV saved: {detector_csv}", flush=True)
+
+    print("Running Haiku chart AI review with detector metadata hints...", flush=True)
+    haiku_paths = run_haiku_chart_triage(
+        source_path=detector_csv,
+        output_dir=output_dir,
+        review_source="all",
+        limit=haiku_triage_limit,
+        workers=haiku_workers,
+        chart_timeframe=haiku_chart_timeframe,
+        chart_only_6m=True,
+        dry_run=dry_run,
+        skip_prompt_cache=skip_haiku_cache,
+        prompts_dir=haiku_prompts_dir,
+        strategy_source_dir=strategy_source_dir,
+        chart_output_dir=haiku_chart_dir,
+        save_json=False,
+        save_markdown=True,
+    )
+    final_path = haiku_paths.get("report") or haiku_paths.get("csv") or survivor_csv
+    return finish(final_path)
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for scanner runs."""
     parser = argparse.ArgumentParser(
         description="Run the trading_system daily focus-list scanner."
+    )
+    parser.add_argument(
+        "--chart-ai-scan",
+        action="store_true",
+        help=(
+            "Run the default chart-AI flow explicitly. This is now the default "
+            "when no legacy or direct-mode flag is used."
+        ),
+    )
+    parser.add_argument(
+        "--full-pipeline",
+        action="store_true",
+        help=(
+            "Run the legacy full pipeline with detector reports, focus scoring, "
+            "final Claude analysis, and premarket report."
+        ),
     )
     parser.add_argument(
         "--universe",
@@ -3205,9 +3662,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--max-ai-analyses",
-        type=int,
+        type=_parse_max_ai_analyses,
         default=MAX_AI_ANALYSES,
-        help="Maximum Claude calls. This is a cap, not a target. Use 0 for no Claude.",
+        metavar="N|all",
+        help=(
+            "Maximum Claude calls. This is a cap, not a target. Use 0 for no "
+            "Claude or 'all' for every qualified candidate."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -3226,7 +3687,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         default="reports",
-        help="Directory for generated reports and audit CSV files.",
+        help="Directory for generated survivor lists, reports, and triage outputs.",
+    )
+    parser.add_argument(
+        "--save-primary-audit",
+        action="store_true",
+        help="Also save the full all-symbol primary gate audit CSV. Default is off.",
+    )
+    parser.add_argument(
+        "--save-primary-report",
+        action="store_true",
+        help="Also save the Markdown primary gate summary report. Default is off.",
     )
     parser.add_argument(
         "--analyze-from-audit",
@@ -3266,12 +3737,118 @@ def parse_args() -> argparse.Namespace:
             "analyze-from-audit mode."
         ),
     )
+    parser.add_argument(
+        "--haiku-chart-triage",
+        action="store_true",
+        help=(
+            "Run Claude Haiku visual chart triage on one standardized 6M "
+            "daily chart per selected ticker."
+        ),
+    )
+    parser.add_argument(
+        "--haiku-triage-limit",
+        type=int,
+        default=None,
+        help="Maximum tickers to review with Haiku triage. Omit to process all selected candidates.",
+    )
+    parser.add_argument(
+        "--haiku-workers",
+        type=int,
+        default=DEFAULT_HAIKU_WORKERS,
+        help="Concurrent Haiku API workers. Default is 1 to reduce input-token rate-limit risk.",
+    )
+    parser.add_argument(
+        "--haiku-review-source",
+        choices=["primary", "priority", "watch", "all"],
+        default="priority",
+        help=(
+            "Candidate source selection for Haiku triage. priority uses detector "
+            "chart-needed rows when available, otherwise focus-gate passed or "
+            "primary-gated candidates."
+        ),
+    )
+    parser.add_argument(
+        "--haiku-chart-timeframe",
+        choices=["6M"],
+        default=DEFAULT_HAIKU_CHART_TIMEFRAME,
+        help="Chart timeframe for Haiku triage. Current implementation supports 6M only.",
+    )
+    parser.add_argument(
+        "--haiku-chart-only-6m",
+        action="store_true",
+        help="Explicitly enforce the current one-chart 6M-only Haiku triage mode.",
+    )
+    parser.add_argument(
+        "--skip-haiku-cache",
+        action="store_true",
+        help="Disable best-effort Anthropic prompt caching for static Haiku triage prompts.",
+    )
+    parser.add_argument(
+        "--haiku-source-file",
+        default=None,
+        help=(
+            "Run Haiku triage directly from an existing detector_candidates CSV/JSON "
+            "or focus_gate_audit CSV."
+        ),
+    )
+    parser.add_argument(
+        "--haiku-prompts-dir",
+        default=str(DEFAULT_PROMPTS_DIR),
+        help="Directory containing STRATEGY_MASTER.md, HAIKU_CHART_TRIAGE_PROMPT.md, and OUTPUT_SCHEMA.md.",
+    )
+    parser.add_argument(
+        "--strategy-source-dir",
+        default=os.getenv("TRADING_STRATEGY_SOURCE_DIR", str(DEFAULT_STRATEGY_SOURCE_DIR)),
+        help="Configurable strategy source document directory. Not sent verbatim to Claude.",
+    )
+    parser.add_argument(
+        "--haiku-chart-dir",
+        default=str(DEFAULT_HAIKU_CHART_DIR),
+        help="Directory for generated Haiku triage chart images.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     """Run the scanner from the command line."""
     args = parse_args()
+    if args.chart_ai_scan:
+        filepath = run_chart_ai_scan(
+            output_dir=args.output_dir,
+            universe_mode=args.universe,
+            max_universe_size=args.max_universe_size,
+            dry_run=args.dry_run,
+            haiku_triage_limit=args.haiku_triage_limit,
+            haiku_workers=args.haiku_workers,
+            haiku_chart_timeframe=args.haiku_chart_timeframe,
+            skip_haiku_cache=args.skip_haiku_cache,
+            haiku_prompts_dir=args.haiku_prompts_dir,
+            strategy_source_dir=args.strategy_source_dir,
+            haiku_chart_dir=args.haiku_chart_dir,
+            save_primary_audit=args.save_primary_audit,
+            save_primary_report=args.save_primary_report,
+        )
+        print(f"Final output location: {filepath}", flush=True)
+        return
+
+    if args.haiku_chart_triage and args.haiku_source_file:
+        haiku_paths = run_haiku_chart_triage(
+            source_path=args.haiku_source_file,
+            output_dir=args.output_dir,
+            review_source=args.haiku_review_source,
+            limit=args.haiku_triage_limit,
+            workers=args.haiku_workers,
+            chart_timeframe=args.haiku_chart_timeframe,
+            chart_only_6m=True,
+            dry_run=args.dry_run,
+            skip_prompt_cache=args.skip_haiku_cache,
+            prompts_dir=args.haiku_prompts_dir,
+            strategy_source_dir=args.strategy_source_dir,
+            chart_output_dir=args.haiku_chart_dir,
+        )
+        print(f"Final Haiku triage report location: {haiku_paths.get('report')}", flush=True)
+        return
+
     if args.detectors_from_audit:
         detector_paths = run_detectors_from_audit(
             audit_path=args.detectors_from_audit,
@@ -3279,7 +3856,45 @@ def main() -> None:
             generate_charts=args.generate_detector_charts,
             detector_chart_limit=args.detector_chart_limit,
         )
+        if args.haiku_chart_triage:
+            haiku_paths = run_haiku_chart_triage(
+                source_path=detector_paths.get("csv"),
+                output_dir=args.output_dir,
+                review_source=args.haiku_review_source,
+                limit=args.haiku_triage_limit,
+                workers=args.haiku_workers,
+                chart_timeframe=args.haiku_chart_timeframe,
+                chart_only_6m=True,
+                dry_run=args.dry_run,
+                skip_prompt_cache=args.skip_haiku_cache,
+                prompts_dir=args.haiku_prompts_dir,
+                strategy_source_dir=args.strategy_source_dir,
+                chart_output_dir=args.haiku_chart_dir,
+            )
+            print(
+                f"Final Haiku triage report location: {haiku_paths.get('report')}",
+                flush=True,
+            )
+            return
         print(f"Final detector report location: {detector_paths.get('report')}", flush=True)
+        return
+
+    if args.haiku_chart_triage and args.analyze_from_audit:
+        haiku_paths = run_haiku_chart_triage(
+            source_path=args.analyze_from_audit,
+            output_dir=args.output_dir,
+            review_source=args.haiku_review_source,
+            limit=args.haiku_triage_limit,
+            workers=args.haiku_workers,
+            chart_timeframe=args.haiku_chart_timeframe,
+            chart_only_6m=True,
+            dry_run=args.dry_run,
+            skip_prompt_cache=args.skip_haiku_cache,
+            prompts_dir=args.haiku_prompts_dir,
+            strategy_source_dir=args.strategy_source_dir,
+            chart_output_dir=args.haiku_chart_dir,
+        )
+        print(f"Final Haiku triage report location: {haiku_paths.get('report')}", flush=True)
         return
 
     if args.analyze_from_audit:
@@ -3297,16 +3912,45 @@ def main() -> None:
                 "normal scan behavior is unchanged.",
                 flush=True,
             )
-        filepath = run_premarket_scan(
-            max_ai_analyses=args.max_ai_analyses,
-            max_candidates_to_score=args.max_candidates_to_score,
-            output_dir=args.output_dir,
-            universe_mode=args.universe,
-            max_universe_size=args.max_universe_size,
-            dry_run=args.dry_run,
-            generate_detector_charts=args.generate_detector_charts,
-            detector_chart_limit=args.detector_chart_limit,
-        )
+        if args.full_pipeline:
+            filepath = run_premarket_scan(
+                max_ai_analyses=args.max_ai_analyses,
+                max_candidates_to_score=args.max_candidates_to_score,
+                output_dir=args.output_dir,
+                universe_mode=args.universe,
+                max_universe_size=args.max_universe_size,
+                dry_run=args.dry_run,
+                generate_detector_charts=args.generate_detector_charts,
+                detector_chart_limit=args.detector_chart_limit,
+                haiku_chart_triage=args.haiku_chart_triage,
+                haiku_triage_limit=args.haiku_triage_limit,
+                haiku_workers=args.haiku_workers,
+                haiku_review_source=args.haiku_review_source,
+                haiku_chart_timeframe=args.haiku_chart_timeframe,
+                haiku_chart_only_6m=True,
+                skip_haiku_cache=args.skip_haiku_cache,
+                haiku_prompts_dir=args.haiku_prompts_dir,
+                strategy_source_dir=args.strategy_source_dir,
+                haiku_chart_dir=args.haiku_chart_dir,
+                save_primary_audit=args.save_primary_audit,
+                save_primary_report=args.save_primary_report,
+            )
+        else:
+            filepath = run_chart_ai_scan(
+                output_dir=args.output_dir,
+                universe_mode=args.universe,
+                max_universe_size=args.max_universe_size,
+                dry_run=args.dry_run,
+                haiku_triage_limit=args.haiku_triage_limit,
+                haiku_workers=args.haiku_workers,
+                haiku_chart_timeframe=args.haiku_chart_timeframe,
+                skip_haiku_cache=args.skip_haiku_cache,
+                haiku_prompts_dir=args.haiku_prompts_dir,
+                strategy_source_dir=args.strategy_source_dir,
+                haiku_chart_dir=args.haiku_chart_dir,
+                save_primary_audit=args.save_primary_audit,
+                save_primary_report=args.save_primary_report,
+            )
     print(f"Final report location: {filepath}", flush=True)
 
 

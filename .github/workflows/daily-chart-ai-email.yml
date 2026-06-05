@@ -1,0 +1,107 @@
+name: Daily Chart AI Email
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub cron runs in UTC. 6 AM America/Chicago is 11 UTC during
+    # daylight saving time and 12 UTC during standard time. The gate step
+    # below allows only the correct one for the current Chicago date.
+    - cron: "0 11 * * 1-5"
+    - cron: "0 12 * * 1-5"
+
+concurrency:
+  group: daily-chart-ai-email
+  cancel-in-progress: false
+
+jobs:
+  daily-chart-ai-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+
+    env:
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      DAILY_REPORT_UNIVERSE: us_listed
+      DAILY_REPORT_OUTPUT_DIR: reports
+      REPORT_EMAIL_SUBJECT_PREFIX: Daily Chart AI Outlook
+      REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+      REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SMTP_USE_TLS: "true"
+      SMTP_USE_SSL: "false"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Decide schedule gate
+        id: gate
+        env:
+          SCHEDULE_EXPR: ${{ github.event.schedule }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime, time, timezone
+          from zoneinfo import ZoneInfo
+
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          schedule_expr = os.environ.get("SCHEDULE_EXPR", "")
+          chicago = ZoneInfo("America/Chicago")
+          now_chicago = datetime.now(chicago)
+
+          if event_name == "workflow_dispatch":
+              should_run = True
+              reason = "manual dispatch"
+          else:
+              target_local = datetime.combine(now_chicago.date(), time(6, 0), chicago)
+              target_utc_hour = target_local.astimezone(timezone.utc).hour
+              fields = schedule_expr.split()
+              scheduled_utc_hour = int(fields[1]) if len(fields) > 1 else None
+              should_run = (
+                  now_chicago.weekday() < 5
+                  and scheduled_utc_hour == target_utc_hour
+              )
+              reason = (
+                  f"schedule={schedule_expr}, "
+                  f"target_utc_hour={target_utc_hour}, "
+                  f"scheduled_utc_hour={scheduled_utc_hour}"
+              )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"should_run={str(should_run).lower()}\n")
+
+          print(f"Chicago time now: {now_chicago.isoformat()}")
+          print(f"Run daily report: {should_run} ({reason})")
+          PY
+
+      - name: Checkout
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        if: steps.gate.outputs.should_run == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run default chart AI pipeline and email report
+        if: steps.gate.outputs.should_run == 'true'
+        run: python daily_report_email.py
+
+      - name: Upload generated reports
+        if: always() && steps.gate.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-chart-ai-reports
+          path: reports/**
+          if-no-files-found: ignore
+          retention-days: 14
