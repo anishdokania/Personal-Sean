@@ -39,10 +39,14 @@ DEFAULT_HAIKU_CHART_DIR = PROJECT_ROOT / "charts" / "haiku_triage"
 DEFAULT_HAIKU_WORKERS = 1
 DEFAULT_HAIKU_CHART_TIMEFRAME = "6M"
 DEFAULT_HAIKU_MAX_TOKENS = 500
+DEFAULT_HAIKU_REQUEST_TIMEOUT_SECONDS = float(
+    os.getenv("ANTHROPIC_HAIKU_REQUEST_TIMEOUT_SECONDS", "60")
+)
 
 ALLOWED_DECISIONS = {"KEEP", "MAYBE", "REJECT"}
 ALLOWED_CONFIDENCE = {"LOW", "MEDIUM", "HIGH"}
 ALLOWED_SETUP_TYPES = {
+    "ema8_snipe_setup",
     "big_base_near_highs",
     "right_side_base",
     "inside_day",
@@ -52,6 +56,26 @@ ALLOWED_SETUP_TYPES = {
     "possible_accumulation",
     "undercut_reclaim",
     "failed_breakdown_reclaim",
+    "none",
+}
+ALLOWED_ENTRY_MODELS = {
+    "ema8_snipe",
+    "undercut_reclaim",
+    "breakout",
+    "breakout_retest",
+    "inside_day_breakout",
+    "no_trade",
+    "post_gap_flag",
+    "failed_breakdown_reclaim",
+    "accumulation",
+    "none",
+}
+ALLOWED_ENTRY_STATUS = {
+    "active",
+    "near_active",
+    "forming",
+    "potential",
+    "confirmed",
     "none",
 }
 
@@ -68,9 +92,14 @@ TRIAGE_CSV_COLUMNS = [
     "decision",
     "confidence",
     "setup_type",
+    "entry_model",
+    "entry_status",
     "visual_quality_1_to_10",
     "trigger_level",
     "invalidation_level",
+    "trigger_distance_pct",
+    "invalidation_distance_pct",
+    "distance_to_8ema_pct",
     "reason_short",
     "warning",
     "raw_response",
@@ -625,6 +654,7 @@ def _call_haiku_chart_triage(
             model=model,
             max_tokens=DEFAULT_HAIKU_MAX_TOKENS,
             temperature=0,
+            timeout=DEFAULT_HAIKU_REQUEST_TIMEOUT_SECONDS,
             messages=[
                 {
                     "role": "user",
@@ -664,6 +694,24 @@ def _normalize_choice(value: Any, allowed: set[str], default: str) -> str:
     return default
 
 
+def _normalize_lower_choice(value: Any, allowed: set[str], default: str) -> str:
+    """Normalize lower-case schema enum values."""
+    text = _clean_text(value, max_chars=80).lower().replace(" ", "_").replace("-", "_")
+    if text in allowed:
+        return text
+
+    aliases = {
+        "8ema_snipe": "ema8_snipe",
+        "8_ema_snipe": "ema8_snipe",
+        "ema_8_snipe": "ema8_snipe",
+    }
+    replacement = aliases.get(text)
+    if replacement in allowed:
+        return replacement
+
+    return default
+
+
 def _normalize_setup_type(value: Any) -> str:
     """Normalize setup_type to the requested enum."""
     text = _clean_text(value, max_chars=120).lower().replace(" ", "_").replace("-", "_")
@@ -671,6 +719,10 @@ def _normalize_setup_type(value: Any) -> str:
         return text
 
     aliases = {
+        "ema8_snipe": "ema8_snipe_setup",
+        "8ema_snipe": "ema8_snipe_setup",
+        "8_ema_snipe": "ema8_snipe_setup",
+        "ema_8_snipe": "ema8_snipe_setup",
         "big_base": "big_base_near_highs",
         "high_base": "big_base_near_highs",
         "right_side": "right_side_base",
@@ -713,9 +765,14 @@ def normalize_haiku_response(
                 "decision": "REJECT",
                 "confidence": "LOW",
                 "setup_type": "none",
+                "entry_model": "none",
+                "entry_status": "none",
                 "visual_quality_1_to_10": 1,
                 "trigger_level": None,
                 "invalidation_level": None,
+                "trigger_distance_pct": None,
+                "invalidation_distance_pct": None,
+                "distance_to_8ema_pct": None,
                 "reason_short": "Invalid JSON response.",
                 "warning": "parse failed",
             },
@@ -728,9 +785,14 @@ def normalize_haiku_response(
         "decision",
         "confidence",
         "setup_type",
+        "entry_model",
+        "entry_status",
         "visual_quality_1_to_10",
         "trigger_level",
         "invalidation_level",
+        "trigger_distance_pct",
+        "invalidation_distance_pct",
+        "distance_to_8ema_pct",
         "reason_short",
         "warning",
     }
@@ -754,12 +816,47 @@ def normalize_haiku_response(
     }:
         errors.append("invalid_setup_type")
 
+    entry_model = _normalize_lower_choice(
+        parsed.get("entry_model"),
+        ALLOWED_ENTRY_MODELS,
+        "none",
+    )
+    if (
+        parsed.get("entry_model") is not None
+        and
+        _clean_text(parsed.get("entry_model")).lower().replace(" ", "_").replace("-", "_")
+        not in ALLOWED_ENTRY_MODELS
+    ):
+        errors.append("invalid_entry_model")
+
+    entry_status = _normalize_lower_choice(
+        parsed.get("entry_status"),
+        ALLOWED_ENTRY_STATUS,
+        "none",
+    )
+    if (
+        parsed.get("entry_status") is not None
+        and
+        _clean_text(parsed.get("entry_status")).lower().replace(" ", "_").replace("-", "_")
+        not in ALLOWED_ENTRY_STATUS
+    ):
+        errors.append("invalid_entry_status")
+
     trigger = _as_float(parsed.get("trigger_level"))
     invalidation = _as_float(parsed.get("invalidation_level"))
+    trigger_distance_pct = _as_float(parsed.get("trigger_distance_pct"))
+    invalidation_distance_pct = _as_float(parsed.get("invalidation_distance_pct"))
+    distance_to_8ema_pct = _as_float(parsed.get("distance_to_8ema_pct"))
     if parsed.get("trigger_level") is not None and trigger is None:
         errors.append("invalid_trigger_level")
     if parsed.get("invalidation_level") is not None and invalidation is None:
         errors.append("invalid_invalidation_level")
+    if parsed.get("trigger_distance_pct") is not None and trigger_distance_pct is None:
+        errors.append("invalid_trigger_distance_pct")
+    if parsed.get("invalidation_distance_pct") is not None and invalidation_distance_pct is None:
+        errors.append("invalid_invalidation_distance_pct")
+    if parsed.get("distance_to_8ema_pct") is not None and distance_to_8ema_pct is None:
+        errors.append("invalid_distance_to_8ema_pct")
 
     reason = _short_text(parsed.get("reason_short"), max_words=20, max_chars=160)
     warning = _short_text(parsed.get("warning"), max_words=15, max_chars=120)
@@ -769,9 +866,22 @@ def normalize_haiku_response(
         "decision": decision,
         "confidence": confidence,
         "setup_type": setup_type,
+        "entry_model": entry_model,
+        "entry_status": entry_status,
         "visual_quality_1_to_10": _as_int_1_to_10(parsed.get("visual_quality_1_to_10")),
         "trigger_level": round(trigger, 4) if trigger is not None else None,
         "invalidation_level": round(invalidation, 4) if invalidation is not None else None,
+        "trigger_distance_pct": (
+            round(trigger_distance_pct, 4) if trigger_distance_pct is not None else None
+        ),
+        "invalidation_distance_pct": (
+            round(invalidation_distance_pct, 4)
+            if invalidation_distance_pct is not None
+            else None
+        ),
+        "distance_to_8ema_pct": (
+            round(distance_to_8ema_pct, 4) if distance_to_8ema_pct is not None else None
+        ),
         "reason_short": reason or "No concise reason returned.",
         "warning": warning,
     }
@@ -802,9 +912,14 @@ def build_dry_run_result(
         "decision": "DRY_RUN",
         "confidence": "",
         "setup_type": "",
+        "entry_model": "",
+        "entry_status": "",
         "visual_quality_1_to_10": None,
         "trigger_level": candidate.trigger_level,
         "invalidation_level": candidate.stop_reference,
+        "trigger_distance_pct": None,
+        "invalidation_distance_pct": None,
+        "distance_to_8ema_pct": None,
         "reason_short": "Dry run: Claude was not called.",
         "warning": "",
         "raw_response": "",
@@ -825,9 +940,14 @@ def build_failed_result(
         "decision": "REJECT",
         "confidence": "LOW",
         "setup_type": "none",
+        "entry_model": "none",
+        "entry_status": "none",
         "visual_quality_1_to_10": 1,
         "trigger_level": candidate.trigger_level,
         "invalidation_level": candidate.stop_reference,
+        "trigger_distance_pct": None,
+        "invalidation_distance_pct": None,
+        "distance_to_8ema_pct": None,
         "reason_short": _short_text(reason, max_words=20, max_chars=160),
         "warning": "triage failed",
         "raw_response": raw_response,
@@ -984,13 +1104,24 @@ def _format_level(value: Any) -> str:
     return f"{numeric:.2f}" if numeric is not None else "N/A"
 
 
+def _format_pct_value(value: Any) -> str:
+    """Format an optional percentage value for Markdown."""
+    numeric = _as_float(value)
+    return f"{numeric:.2f}%" if numeric is not None else "N/A"
+
+
 def _format_candidate_line(result: dict[str, Any]) -> str:
     """Format one concise Markdown candidate row."""
     warning = f" | warn: {result.get('warning')}" if result.get("warning") else ""
     return (
         f"- {result.get('ticker')} | Q{result.get('visual_quality_1_to_10')} | "
-        f"{result.get('confidence')} | trigger {_format_level(result.get('trigger_level'))} | "
-        f"invalid {_format_level(result.get('invalidation_level'))} | "
+        f"{result.get('confidence')} | "
+        f"{result.get('entry_model') or 'none'}/{result.get('entry_status') or 'none'} | "
+        f"trigger {_format_level(result.get('trigger_level'))} "
+        f"({_format_pct_value(result.get('trigger_distance_pct'))}) | "
+        f"invalid {_format_level(result.get('invalidation_level'))} "
+        f"({_format_pct_value(result.get('invalidation_distance_pct'))}) | "
+        f"8ema {_format_pct_value(result.get('distance_to_8ema_pct'))} | "
         f"{result.get('reason_short')}{warning}"
     )
 
