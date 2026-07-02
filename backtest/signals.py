@@ -20,6 +20,7 @@ import pandas as pd
 from technical import analyze_stock_technicals
 from today_focus import evaluate_today_focus
 from focus_structure import evaluate_focus_structure
+from main import score_sector_alignment
 
 from .config import (
     BacktestConfig,
@@ -28,9 +29,11 @@ from .config import (
     HARD_GATE_MIN_DOLLAR_VOLUME,
     HARD_GATE_MIN_PRICE,
     FOCUS_GATE_MIN_BLUEPRINT,
+    FOCUS_GATE_MIN_SECTOR,
     FOCUS_GATE_MIN_STRUCTURE,
     FOCUS_GATE_MIN_TODAY,
 )
+from .sector import SectorRanker
 
 
 @dataclass
@@ -44,6 +47,8 @@ class Signal:
     structure_score: float
     blueprint_score: float
     setup_type: Optional[str]
+    sector_alignment_score: Optional[float] = None
+    sector_etf: Optional[str] = None
 
 
 def _atr14(df: pd.DataFrame) -> Optional[float]:
@@ -79,11 +84,23 @@ def _passes_hard_gate(window: pd.DataFrame) -> bool:
     return True
 
 
+def _pct_change_over_bars(closes: pd.Series, bars: int) -> Optional[float]:
+    """Percent return vs `bars` sessions ago, matching main._pct_change_over_bars."""
+    if len(closes) <= bars:
+        return None
+    latest = float(closes.iloc[-1])
+    prior = float(closes.iloc[-bars - 1])
+    if not np.isfinite(latest) or not np.isfinite(prior) or prior == 0:
+        return None
+    return (latest / prior - 1.0) * 100.0
+
+
 def evaluate_bar(
     symbol: str,
     df: pd.DataFrame,
     i: int,
     config: BacktestConfig,
+    sector_ranker: Optional[SectorRanker] = None,
 ) -> Optional[Signal]:
     """Return a Signal if bar `i` qualifies as a fresh setup, else None.
 
@@ -114,6 +131,25 @@ def evaluate_bar(
     ):
         return None
 
+    # Sector-alignment gate: mirror the live focus gate, which rejects
+    # sector_alignment_score < 45 (main.py:991). Point-in-time sector ranking
+    # comes from `sector_ranker`; when absent (e.g. single-symbol debugging),
+    # skip this layer rather than fail closed.
+    sector_alignment_score: Optional[float] = None
+    sector_etf: Optional[str] = None
+    if sector_ranker is not None:
+        closes = window["Close"]
+        inputs = sector_ranker.alignment_inputs(
+            symbol,
+            window.index[-1],
+            _pct_change_over_bars(closes, 21),
+            _pct_change_over_bars(closes, 63),
+        )
+        sector_etf = inputs.get("sector_etf")  # type: ignore[assignment]
+        sector_alignment_score = score_sector_alignment(inputs)
+        if sector_alignment_score < FOCUS_GATE_MIN_SECTOR:
+            return None
+
     diagnostics = structure.get("diagnostics") or {}
     ti = diagnostics.get("trigger_invalidation") or {}
     trigger = ti.get("trigger_level")
@@ -141,4 +177,6 @@ def evaluate_bar(
         structure_score=structure_score,
         blueprint_score=blueprint_score,
         setup_type=structure.get("blueprint_setup_type"),
+        sector_alignment_score=sector_alignment_score,
+        sector_etf=sector_etf,
     )

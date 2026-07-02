@@ -19,6 +19,7 @@ from .config import BacktestConfig
 from .data import DailyDataProvider
 from .engine import run_backtest
 from .metrics import compute_stats, trades_to_frame
+from .sector import SectorRanker
 from .universe_liquid import LIQUID_UNIVERSE
 
 
@@ -36,6 +37,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--risk-pct", type=float, default=0.01)
     p.add_argument("--max-positions", type=int, default=10)
     p.add_argument("--no-cache", action="store_true")
+    p.add_argument(
+        "--no-sector",
+        action="store_true",
+        help="disable the point-in-time sector-alignment gate (for A/B comparison)",
+    )
     return p.parse_args()
 
 
@@ -65,7 +71,13 @@ def main() -> None:
     data = provider.get_many(symbols)
     print(f"Loaded {len(data)} symbols with data.\n", flush=True)
 
-    result = run_backtest(data, config)
+    sector_ranker = None
+    if not args.no_sector:
+        print("Loading sector ETF history for point-in-time alignment...", flush=True)
+        sector_ranker = SectorRanker(provider)
+        print(f"Sector ranker ready ({len(sector_ranker.loaded_etfs)} ETFs).\n", flush=True)
+
+    result = run_backtest(data, config, sector_ranker=sector_ranker)
     stats = compute_stats(result)
 
     print("\n" + stats.as_text())

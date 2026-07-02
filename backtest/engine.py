@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from .config import BacktestConfig
+from .sector import SectorRanker
 from .signals import Signal, evaluate_bar
 
 
@@ -80,26 +81,31 @@ def _slip_sell(price: float, bps: float) -> float:
 
 
 def generate_signals(
-    symbol: str, df: pd.DataFrame, config: BacktestConfig
+    symbol: str,
+    df: pd.DataFrame,
+    config: BacktestConfig,
+    sector_ranker: Optional[SectorRanker] = None,
 ) -> Dict[pd.Timestamp, Signal]:
     """Pass 1: every qualifying setup bar for one symbol (point-in-time)."""
     out: Dict[pd.Timestamp, Signal] = {}
     for i in range(len(df)):
-        sig = evaluate_bar(symbol, df, i, config)
+        sig = evaluate_bar(symbol, df, i, config, sector_ranker=sector_ranker)
         if sig is not None:
             out[df.index[i]] = sig
     return out
 
 
 def run_backtest(
-    data: Dict[str, pd.DataFrame], config: BacktestConfig
+    data: Dict[str, pd.DataFrame],
+    config: BacktestConfig,
+    sector_ranker: Optional[SectorRanker] = None,
 ) -> BacktestResult:
     # --- Pass 1: signals -----------------------------------------------------
     print("Generating signals (point-in-time)...", flush=True)
     signals_by_symbol: Dict[str, Dict[pd.Timestamp, Signal]] = {}
     signal_count = 0
     for n, (sym, df) in enumerate(data.items(), 1):
-        sigs = generate_signals(sym, df, config)
+        sigs = generate_signals(sym, df, config, sector_ranker=sector_ranker)
         signals_by_symbol[sym] = sigs
         signal_count += len(sigs)
         print(f"  [{n}/{len(data)}] {sym}: {len(sigs)} setups", flush=True)

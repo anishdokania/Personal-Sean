@@ -25,6 +25,8 @@ HARD_GATE_MIN_DOLLAR_VOLUME = 20_000_000
 FOCUS_GATE_MIN_TODAY = 70
 FOCUS_GATE_MIN_STRUCTURE = 65
 FOCUS_GATE_MIN_BLUEPRINT = 65
+# Live focus gate also rejects sector_alignment_score < 45 (main.py:991).
+FOCUS_GATE_MIN_SECTOR = 45
 
 
 # --- Trade model -------------------------------------------------------------
