@@ -12,5 +12,6 @@ venv/
 *.log
 reports/
 charts/
+.rag_index/
 strategy_sources/*
 !strategy_sources/README.md

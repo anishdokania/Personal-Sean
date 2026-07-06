@@ -52,6 +52,22 @@ Generate the daily emailed report:
 python daily_report_email.py
 ```
 
+## Ask questions about this project (local RAG)
+
+`rag_assistant.py` is a small, local retrieval-augmented assistant over this
+repo's own docs and source. Retrieval is fully local (a TF-IDF index built with
+`numpy`, stored git-ignored in `.rag_index/`); only answer synthesis calls
+Claude.
+
+```bash
+python rag_assistant.py index                 # build/refresh the local index
+python rag_assistant.py ask "How is the report emailed?"
+python rag_assistant.py chat                  # interactive session
+```
+
+Answers cite the source files and line ranges they draw from. Set `RAG_MODEL`
+(or pass `-m`) to change the Claude model; re-run `index` after code changes.
+
 ## Notes
 
 - Yahoo (`yfinance`) data is EOD/delayed and rate-limited; the scanner is
