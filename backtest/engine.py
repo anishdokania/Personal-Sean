@@ -175,7 +175,7 @@ def run_backtest(
                 closed.append(pos)
                 del open_positions[sym]
 
-        # 2) Fill pending breakout orders ------------------------------------
+        # 2) Fill pending LIMIT orders (sniped pullback to the reclaim level) --
         for sym in list(pending.keys()):
             order = pending[sym]
             if day <= order.signal.date:
@@ -193,12 +193,14 @@ def run_backtest(
             if row is None:
                 continue
             o, h, l = float(row["Open"]), float(row["High"]), float(row["Low"])
-            trigger = order.signal.trigger_level
-            if h < trigger:
-                continue  # breakout not reached today
+            limit = order.signal.trigger_level
+            if l > limit:
+                continue  # price never pulled back to the limit today; keep armed
 
-            raw_entry = max(o, trigger)  # gap-up fills at the open
-            entry = _slip_buy(raw_entry, config.slippage_bps)
+            # Limit buy: a gap below the limit fills at the (better) open; else at
+            # the limit. No adverse buy slippage -- a limit fills at its price or
+            # better.
+            entry = o if o <= limit else limit
             stop = order.signal.invalidation_level
             per_share_risk = entry - stop
             if per_share_risk <= 0:
@@ -222,7 +224,12 @@ def run_backtest(
                     continue
                 cost = shares * entry + config.commission_per_share * shares
 
-            target = entry + config.target_r_multiple * per_share_risk
+            # Structural target (nearest swing high); fall back to an R multiple
+            # for the legacy path where no target level is attached.
+            if order.signal.target_level is not None:
+                target = float(order.signal.target_level)
+            else:
+                target = entry + config.target_r_multiple * per_share_risk
             trade = Trade(
                 symbol=sym,
                 entry_date=day,
@@ -233,9 +240,13 @@ def run_backtest(
                 setup_type=order.signal.setup_type,
             )
 
-            # Pessimistic same-day stop check on the entry bar.
-            if l <= stop:
-                fill = _slip_sell(stop, config.slippage_bps)
+            # Same-day stop on the entry bar. Pessimistic: any touch of the stop
+            # counts. Optimistic: only a gap open below the stop counts (the limit
+            # fill is assumed to have held into the close otherwise).
+            stopped_same_day = (l <= stop) if config.entry_bar_same_day_stop else (o <= stop)
+            if stopped_same_day:
+                exit_at = min(o, stop) if o <= stop else stop
+                fill = _slip_sell(exit_at, config.slippage_bps)
                 trade.exit_date = day
                 trade.exit_price = fill
                 trade.exit_reason = "stop_same_day"

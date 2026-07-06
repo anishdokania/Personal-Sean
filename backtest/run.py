@@ -20,7 +20,7 @@ from .data import DailyDataProvider
 from .engine import run_backtest
 from .metrics import compute_stats, trades_to_frame
 from .sector import SectorRanker
-from .universe_liquid import LIQUID_UNIVERSE
+from .universe_movers import MOVERS_UNIVERSE
 
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
@@ -50,7 +50,7 @@ def main() -> None:
     symbols = (
         [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
         if args.symbols
-        else list(LIQUID_UNIVERSE)
+        else list(MOVERS_UNIVERSE)
     )
     if args.limit > 0:
         symbols = symbols[: args.limit]
