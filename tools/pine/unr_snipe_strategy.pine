@@ -1,0 +1,163 @@
+//@version=6
+// UnR Snipe — undercut & reclaim strategy (Sean / Options Cartel style)
+//
+// Mirrors backtest/signals.py + backtest/engine.py so TradingView Premium can
+// validate the same rules against ITS deep intraday history — the one data
+// asset the Python stack can't reach for free. Suggested use:
+//   * Daily chart: replicates the Python daily backtest (sanity cross-check).
+//   * 30m/65m chart: tests the true intraday snipe the daily bars approximate.
+// Premium's ~20k-bar lookback gives years of intraday history per symbol.
+//
+// Signal bar (all conditions on the closed bar):
+//   - regime: close > EMA50 and EMA21 rising vs 5 bars ago
+//   - ADR% (20) >= adrFloor — high-ADR movers only
+//   - bar closes in the upper part of its range (buyers won)
+//   - low undercut a reference (prev bar low, EMA8, or EMA21) and close
+//     reclaimed it: low < ref < close
+// Entry: limit at the reclaimed level, armed for entryValidBars bars
+//        (or optional next-open market entry for A/B comparison)
+// Stop:  undercut low - stopBufferADR * ADR$
+// Target: nearest confirmed pivot high above entry (swing target), must offer
+//        >= minRR reward:risk; or ride the 8 EMA trail instead.
+
+strategy("UnR Snipe (undercut & reclaim)", overlay = true,
+     initial_capital = 100000,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value = 10,
+     commission_type = strategy.commission.cash_per_share,
+     commission_value = 0.0,
+     slippage = 0,
+     calc_on_every_tick = false,
+     process_orders_on_close = false)
+
+// ---- Inputs ---------------------------------------------------------------
+adrFloor      = input.float(5.0,  "ADR% floor (universe gate)", minval = 0.5, step = 0.5)
+adrLen        = input.int(20,     "ADR lookback")
+stopBufferADR = input.float(0.05, "Stop buffer below undercut low (ADR)", step = 0.05)
+minRR         = input.float(1.0,  "Min reward:risk to swing target", step = 0.25)
+entryValidBars= input.int(3,      "Limit order armed for N bars", minval = 1)
+pivotK        = input.int(3,      "Swing pivot strength (k)", minval = 1)
+swingLookback = input.int(40,     "Swing target lookback", minval = 10)
+maxHoldBars   = input.int(15,     "Time stop (bars)", minval = 1)
+closePosRatio = input.float(0.4,  "Min close position in range", step = 0.05)
+entryModel    = input.string("limit_reclaim", "Entry model",
+     options = ["limit_reclaim", "next_open"])
+exitModel     = input.string("swing_target", "Exit model",
+     options = ["swing_target", "trail_ema8", "hybrid"])
+partialAtR    = input.float(2.0,  "Hybrid: partial at R multiple", step = 0.25)
+partialPct    = input.float(50.0, "Hybrid: partial size %", minval = 1, maxval = 99)
+
+// ---- Indicators -------------------------------------------------------------
+ema8  = ta.ema(close, 8)
+ema21 = ta.ema(close, 21)
+ema50 = ta.ema(close, 50)
+adrAbs = ta.sma(high - low, adrLen)
+adrPct = (ta.sma(high / low, adrLen) - 1.0) * 100.0
+
+// ---- Signal detection (on the closed bar) ------------------------------------
+regimeOK   = close > ema50 and ema21 >= ema21[5]
+buyersWon  = high > low and (close - low) / (high - low) >= closePosRatio
+adrOK      = adrPct >= adrFloor
+
+pdl = low[1]
+unrPDL   = low < pdl   and pdl   < close
+unrEMA8  = low < ema8  and ema8  < close
+unrEMA21 = low < ema21 and ema21 < close
+
+float reclaimLevel = na
+string setupType = na
+if regimeOK and buyersWon and adrOK
+    if unrPDL
+        reclaimLevel := pdl
+        setupType := "unr_pdl"
+    else if unrEMA8
+        reclaimLevel := ema8
+        setupType := "unr_ema8"
+    else if unrEMA21
+        reclaimLevel := ema21
+        setupType := "unr_ema21"
+
+// Nearest confirmed pivot high above the entry level (point-in-time: pivot
+// needs pivotK bars of right-side confirmation, all in the past).
+nearestPivotAbove(level) =>
+    float best = na
+    for j = pivotK to swingLookback
+        ph = ta.pivothigh(high, pivotK, pivotK)[j - pivotK]
+        if not na(ph) and ph > level and (na(best) or ph < best)
+            best := ph
+    best
+
+// ---- Order state -------------------------------------------------------------
+var float pendingLimit  = na
+var float pendingStop   = na
+var float pendingTarget = na
+var int   pendingUntil  = na
+var float posStop   = na
+var float posTarget = na
+var int   posEntryBar = na
+var bool  partialDone = false
+
+signalFired = not na(reclaimLevel)
+if signalFired and strategy.position_size == 0
+    stopLvl = low - stopBufferADR * adrAbs
+    tgt = nearestPivotAbove(reclaimLevel)
+    risk = reclaimLevel - stopLvl
+    rrOK = not na(tgt) and risk > 0 and (tgt - reclaimLevel) >= minRR * risk
+    if rrOK and reclaimLevel < close
+        pendingLimit  := reclaimLevel
+        pendingStop   := stopLvl
+        pendingTarget := tgt
+        pendingUntil  := bar_index + entryValidBars
+
+// Arm / refresh the entry order.
+if not na(pendingLimit) and strategy.position_size == 0
+    if bar_index > pendingUntil
+        pendingLimit := na
+        strategy.cancel("UnR")
+    else
+        if entryModel == "limit_reclaim"
+            strategy.entry("UnR", strategy.long, limit = pendingLimit)
+        else
+            strategy.entry("UnR", strategy.long)  // market at next open
+
+// On fill: attach exits.
+justFilled = strategy.position_size > 0 and strategy.position_size[1] == 0
+if justFilled
+    posStop   := pendingStop
+    posTarget := pendingTarget
+    posEntryBar := bar_index
+    partialDone := false
+    pendingLimit := na
+
+if strategy.position_size > 0
+    heldBars = bar_index - posEntryBar
+    risk = strategy.position_avg_price - posStop
+    if exitModel == "swing_target"
+        strategy.exit("XT", "UnR", stop = posStop, limit = posTarget)
+    else if exitModel == "trail_ema8"
+        strategy.exit("XS", "UnR", stop = posStop)
+        if close < ema8 and heldBars >= 1
+            strategy.close("UnR", comment = "trail_ema8")
+    else  // hybrid: partial at R multiple, stop -> breakeven, trail the rest
+        if not partialDone
+            strategy.exit("XP", "UnR", stop = posStop,
+                 limit = strategy.position_avg_price + partialAtR * risk,
+                 qty_percent = partialPct)
+            if high >= strategy.position_avg_price + partialAtR * risk
+                partialDone := true
+        else
+            strategy.exit("XR", "UnR",
+                 stop = math.max(posStop, strategy.position_avg_price))
+            if close < ema8 and heldBars >= 1
+                strategy.close("UnR", comment = "trail_ema8")
+    if heldBars >= maxHoldBars
+        strategy.close("UnR", comment = "time_stop")
+
+// ---- Plots --------------------------------------------------------------------
+plot(ema8,  "EMA8",  color = color.new(color.orange, 0))
+plot(ema21, "EMA21", color = color.new(color.blue, 30))
+plot(ema50, "EMA50", color = color.new(color.gray, 30))
+plotshape(signalFired, "UnR signal", shape.triangleup,
+     location.belowbar, color = color.new(color.lime, 0), size = size.tiny)
+bgcolor(adrPct < adrFloor ? color.new(color.gray, 92) : na,
+     title = "Below ADR floor")

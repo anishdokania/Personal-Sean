@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,7 @@ class Stats:
     avg_win_r: float
     avg_loss_r: float
     expectancy_r: float          # average R per trade -- the headline edge number
+    expectancy_ci95: Tuple[float, float]  # bootstrap CI on expectancy
     profit_factor: float
     total_return_pct: float
     cagr_pct: float
@@ -27,8 +28,10 @@ class Stats:
     avg_bars_held: float
     exposure_note: str
     exit_reason_counts: Dict[str, int]
+    resolution_counts: Dict[str, int] = field(default_factory=dict)
 
     def as_text(self) -> str:
+        lo, hi = self.expectancy_ci95
         lines = [
             "================  BACKTEST RESULTS  ================",
             f"Trades taken........ {self.trades}",
@@ -36,6 +39,7 @@ class Stats:
             f"Avg win............. {self.avg_win_r:+.2f}R",
             f"Avg loss............ {self.avg_loss_r:+.2f}R",
             f"Expectancy.......... {self.expectancy_r:+.3f}R per trade   <-- the edge",
+            f"  95% bootstrap CI.. [{lo:+.3f}R, {hi:+.3f}R]",
             f"Profit factor....... {self.profit_factor:.2f}",
             "----------------------------------------------------",
             f"Total return........ {self.total_return_pct:+.1f}%",
@@ -43,8 +47,12 @@ class Stats:
             f"Max drawdown........ {self.max_drawdown_pct:.1f}%",
             f"Avg bars held....... {self.avg_bars_held:.1f}",
             "----------------------------------------------------",
-            "Exits by reason:",
+            "Outcome provenance (how each trade's path was determined):",
         ]
+        for res in ("exact", "hourly", "pessimistic", "optimistic"):
+            if res in self.resolution_counts:
+                lines.append(f"  {res:<18} {self.resolution_counts[res]}")
+        lines.append("Exits by reason:")
         for reason, count in sorted(
             self.exit_reason_counts.items(), key=lambda kv: -kv[1]
         ):
@@ -59,6 +67,20 @@ def _max_drawdown(equity: pd.Series) -> float:
     running_max = equity.cummax()
     drawdown = (equity - running_max) / running_max
     return float(drawdown.min() * 100)
+
+
+def bootstrap_expectancy_ci(
+    rs: List[float], n_boot: int = 10_000, ci: float = 0.95, seed: int = 7
+) -> Tuple[float, float]:
+    """Percentile bootstrap CI for mean R. Answers: could this expectancy be
+    luck from this many trades?"""
+    if len(rs) < 2:
+        return (float("nan"), float("nan"))
+    rng = np.random.default_rng(seed)
+    arr = np.asarray(rs, dtype=float)
+    means = rng.choice(arr, size=(n_boot, arr.size), replace=True).mean(axis=1)
+    alpha = (1 - ci) / 2
+    return (float(np.quantile(means, alpha)), float(np.quantile(means, 1 - alpha)))
 
 
 def compute_stats(result: BacktestResult) -> Stats:
@@ -80,8 +102,10 @@ def compute_stats(result: BacktestResult) -> Stats:
         total_return = cagr = 0.0
 
     reason_counts: Dict[str, int] = {}
+    res_counts: Dict[str, int] = {}
     for t in trades:
         reason_counts[t.exit_reason or "?"] = reason_counts.get(t.exit_reason or "?", 0) + 1
+        res_counts[t.resolution] = res_counts.get(t.resolution, 0) + 1
 
     return Stats(
         trades=n,
@@ -91,6 +115,7 @@ def compute_stats(result: BacktestResult) -> Stats:
         avg_win_r=float(np.mean(wins)) if wins else 0.0,
         avg_loss_r=float(np.mean(losses)) if losses else 0.0,
         expectancy_r=float(np.mean(rs)) if rs else 0.0,
+        expectancy_ci95=bootstrap_expectancy_ci(rs),
         profit_factor=(gross_win / gross_loss) if gross_loss > 0 else float("inf"),
         total_return_pct=total_return,
         cagr_pct=cagr,
@@ -98,6 +123,7 @@ def compute_stats(result: BacktestResult) -> Stats:
         avg_bars_held=float(np.mean([t.bars_held for t in trades])) if trades else 0.0,
         exposure_note=f"{n} trades over {len(equity)} sessions",
         exit_reason_counts=reason_counts,
+        resolution_counts=res_counts,
     )
 
 
@@ -107,11 +133,14 @@ def trades_to_frame(result: BacktestResult) -> pd.DataFrame:
         rows.append(
             {
                 "symbol": t.symbol,
+                "signal_date": t.signal_date.date() if t.signal_date is not None else None,
                 "entry_date": t.entry_date.date() if t.entry_date is not None else None,
                 "entry": round(t.entry_price, 2),
-                "stop": round(t.stop, 2),
-                "target": round(t.target, 2),
+                "stop": round(t.stop_initial, 2),
+                "target": round(t.target, 2) if t.target is not None else None,
                 "shares": t.shares,
+                "partial_date": t.partial_date.date() if t.partial_date is not None else None,
+                "partial_exit": round(t.partial_price, 2) if t.partial_price is not None else None,
                 "exit_date": t.exit_date.date() if t.exit_date is not None else None,
                 "exit": round(t.exit_price, 2) if t.exit_price is not None else None,
                 "reason": t.exit_reason,
@@ -119,6 +148,10 @@ def trades_to_frame(result: BacktestResult) -> pd.DataFrame:
                 "R": round(t.r_multiple, 2) if t.r_multiple is not None else None,
                 "pnl": round(t.pnl, 2),
                 "setup": t.setup_type,
+                "adr_pct": round(t.adr_pct, 2) if t.adr_pct is not None else None,
+                "rr_planned": round(t.rr_planned, 2) if t.rr_planned is not None else None,
+                "chase_adr": round(t.chase_adr, 2) if t.chase_adr is not None else None,
+                "resolution": t.resolution,
             }
         )
     return pd.DataFrame(rows)

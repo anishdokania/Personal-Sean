@@ -78,16 +78,42 @@ class BacktestConfig:
     max_hold_days: int = 15            # time stop: exit at close after N trading days
     max_risk_pct_of_price: float = 0.15  # skip setups whose stop is >15% away (too wide)
 
-    # Intrabar ambiguity: if both stop and target are touched the same day and we
-    # only have daily OHLC, assume the stop filled first (pessimistic / honest).
-    stop_first_on_ambiguous_bar: bool = True
+    # --- Entry / exit model selection -------------------------------------
+    # entry_model:
+    #   "limit_reclaim": next-day LIMIT back at the reclaimed level. Only fills
+    #                    when price returns to the level — adversely selected
+    #                    (the best reclaims never come back).
+    #   "next_open":     market entry at the next open (confirmation entry,
+    #                    pays the overnight gap).
+    #   "signal_close":  entry at the UnR bar's own close — the closest daily
+    #                    approximation of buying the reclaim intraday as it
+    #                    happens (live: a ~15:45 ET scan + MOC order). No fill
+    #                    ambiguity: a close-price entry is exact on daily bars.
+    entry_model: str = "limit_reclaim"
+    # exit_model:
+    #   "swing_target": intrabar target at the nearest overhead swing high
+    #                   (subject to intrabar ambiguity -> hourly resolution).
+    #   "trail_ema8":   no intrabar target; exit on a daily close below the
+    #                   8 EMA (or time stop). EXACT on daily bars: the only
+    #                   intrabar event is the stop, which is unambiguous.
+    #   "hybrid":       partial at +partial_at_r R (intrabar), stop to
+    #                   breakeven, remainder trails the 8 EMA close-based.
+    exit_model: str = "swing_target"
+    trail_ema_span: int = 8
+    trail_confirm_closes: int = 1      # consecutive closes below the EMA to exit
+    partial_at_r: float = 2.0          # hybrid: take partial at this R multiple
+    partial_fraction: float = 0.5      # hybrid: fraction sold at the partial
 
-    # Limit entries fill on an intraday pullback to the reclaim level; on daily
-    # bars we can't tell whether price then bounced or ran to the (very tight)
-    # stop. With True we assume it also stopped that bar (pessimistic bound);
-    # with False we assume the fill held into the close unless it gapped below
-    # the stop at the open (optimistic bound). The truth needs intraday data.
-    entry_bar_same_day_stop: bool = True
+    # --- Intrabar ambiguity handling ---------------------------------------
+    # When a daily bar touches both stop and target, the true order is unknowable
+    # from daily OHLC. Resolution ladder:
+    #   1. hourly bars (when use_hourly_resolution and data covers the day),
+    #   2. otherwise fall back to ambiguity_mode:
+    #      "pessimistic" -> assume the stop filled first (lower bound),
+    #      "optimistic"  -> assume the target filled first (upper bound).
+    # Running both modes brackets the truth; hourly resolution narrows the gap.
+    ambiguity_mode: str = "pessimistic"
+    use_hourly_resolution: bool = True
 
     # Portfolio / sizing
     starting_equity: float = 100_000.0

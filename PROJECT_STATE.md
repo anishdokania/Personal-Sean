@@ -1,6 +1,40 @@
 # trading_system Project State
 
-Last updated: 2026-06-03
+Last updated: 2026-07-10
+
+## 2026-07-10: UnR Edge Study & Backtest Engine v2
+
+- Added `backtest/fetch_data.py` + `.github/workflows/backtest-data.yml`: market
+  data is fetched on a GitHub Actions runner (the dev sandbox has no route to
+  market-data hosts) and committed as a reproducible snapshot under
+  `backtest/marketdata/` — daily OHLCV 2021→today plus ~2 years of hourly bars
+  for 119 symbols (movers universe + SPY/QQQ + sector ETFs).
+- Rebuilt the backtest engine around an explicit honesty model: every trade
+  outcome is labeled `exact`, `hourly` (intrabar ambiguity resolved from real
+  hourly bars), or `pessimistic`/`optimistic` (bounded, never guessed).
+  Key exactness lemma: the stop sits strictly below the limit entry, so an
+  entry-day low at/under the stop proves both the fill and the stop-out.
+- Added entry models (`limit_reclaim`, `next_open`, `signal_close`) and exit
+  models (`swing_target`, `trail_ema8` — fully exact on daily bars, `hybrid`
+  partial + breakeven + trail), with signal-pass reuse across variants.
+- Signal generation refactored to precomputed causal indicators (O(n), ~20x
+  faster, mathematically identical).
+- Added `backtest/edge_report.py`: variant matrix with pessimistic/optimistic
+  brackets, measured-only subsets, slices (setup, ADR%, RR, chase, year, SPY
+  regime, symbol concentration), bootstrap CIs, and a 2021-23/2024-26
+  split-sample check. Results in `backtest/results/EDGE_REPORT.md`.
+- Added `backtest/validate_close_entry.py`: 86.9% of signals are detectable at
+  15:30 ET with ~zero mean drift to the close, validating the close-entry model.
+- Headline finding (details in `STRATEGY_HANDOFF.md`): the old next-day-limit
+  entry approximation is adversely selected and measures **negative**; close
+  entry + 8 EMA trail measures **+0.266R/trade** (1,362 trades, CI [+0.08,
+  +0.50], zero assumed outcomes), rising to **+0.529R** (711 trades, PF 1.67)
+  with risk-on + no-chase (≤0.5 ADR) + ADR 5-10% filters. All three filters
+  show monotonic dose-response and hold in both split-sample halves.
+- Added `tools/pine/unr_snipe_strategy.pine` (Pine v6) so TradingView Premium
+  can cross-validate the same rules on deep intraday history.
+- Spot-audited randomly sampled trades against raw bars (no look-ahead) and
+  cross-checked the data snapshot against Robinhood historicals.
 
 ## Architecture Status
 
