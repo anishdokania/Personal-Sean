@@ -7,6 +7,11 @@ name: Backtest Market Data Snapshot
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "claude/market-edge-strategy-ps4w2s"
+    paths:
+      - "backtest/marketdata/.trigger"
 
 concurrency:
   group: backtest-data-${{ github.ref }}
