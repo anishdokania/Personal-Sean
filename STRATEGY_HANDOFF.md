@@ -41,7 +41,20 @@ outcomes. G5 is positive in both split-sample halves (2021-23: +0.15R;
 5. Enter near the close of the signal bar; stop = undercut low − 0.05 ADR.
 6. Exit: hard stop until a daily close below the 8 EMA; no profit target
    (the edge lives in the +3R to +10R right tail; capping it kills it).
-7. Time stop after 15 sessions.
+7. **No time stop.** (2026-07-10 sweep, `backtest/results/SWEEP_TRAIL.md`:
+   the inherited 15-session cap was force-closing the runners — the 29 trades
+   that survived 15 days averaged +15.6R. Removing it lifts expectancy from
+   +0.53R to **+0.655R** (PF 1.70, CAGR +52% at 1% risk, MaxDD -37%), and the
+   improvement holds in every one of 12 configurations and in both era halves.)
+
+**On win rate (from the same sweep):** ~27% is structural, not a flaw. The
+stop is ~0.5 ADR below entry on names that range 5-10% a day, so ordinary
+noise tags it; the payoff is +4.9R average winners. Widening the stop to
+0.5 ADR below the undercut raises win rate to 33% but *lowers* expectancy to
++0.48R — the tight stop is the engine of the edge. Slower trails (21 EMA,
+2-close confirm) show higher raw expectancy (up to +0.96R) but go negative in
+the 2021-23 half; 8 EMA / 1-close is the only trail that is positive in both
+halves, so it stays the recommendation.
 
 **Honest caveats:** universe is curated (not survivorship-free); expectancy is
 era-dependent (2022-style tape ≈ breakeven with filters); avg win is tail-driven
