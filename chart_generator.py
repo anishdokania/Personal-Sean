@@ -8,13 +8,23 @@ automation, or external charting services.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
 
-MPL_CACHE_DIR = Path("/private/tmp/trading_system_mpl_cache")
-MPL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+# Matplotlib needs a writable config/cache dir. Use the platform temp directory
+# so this works on macOS, Linux CI runners, and anywhere else. Override with
+# TRADING_MPL_CACHE_DIR if you want it somewhere specific.
+MPL_CACHE_DIR = Path(
+    os.getenv("TRADING_MPL_CACHE_DIR")
+    or Path(tempfile.gettempdir()) / "trading_system_mpl_cache"
+).expanduser()
+try:
+    MPL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:  # pragma: no cover - fall back to matplotlib's own default.
+    MPL_CACHE_DIR = Path(tempfile.mkdtemp(prefix="trading_system_mpl_cache_"))
 os.environ.setdefault("MPLCONFIGDIR", str(MPL_CACHE_DIR))
 
 try:

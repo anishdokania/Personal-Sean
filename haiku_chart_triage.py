@@ -266,26 +266,32 @@ def _row_value(row: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _load_prompt_file(prompts_dir: Path, filename: str) -> str:
-    """Load one prompt file from the configured prompt directory."""
-    path = prompts_dir / filename
-    if not path.exists() or not path.is_file():
-        raise FileNotFoundError(f"Prompt file not found: {path}")
+def _load_prompt_file(prompts_dir: Path, stem: str) -> str:
+    """Load one prompt file, preferring the refined `_UPDATED` variant.
 
-    text = path.read_text(encoding="utf-8").strip()
-    if not text:
-        raise ValueError(f"Prompt file is empty: {path}")
+    Prompt files are kept as `<STEM>_UPDATED.md` once they have been hand-tuned,
+    so try that first and fall back to the plain `<STEM>.md` name.
+    """
+    candidates = [prompts_dir / f"{stem}_UPDATED.md", prompts_dir / f"{stem}.md"]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8").strip()
+        if not text:
+            raise ValueError(f"Prompt file is empty: {path}")
+        return text
 
-    return text
+    tried = " or ".join(str(path) for path in candidates)
+    raise FileNotFoundError(f"Prompt file not found: {tried}")
 
 
 def load_haiku_prompts(prompts_dir: str | Path = DEFAULT_PROMPTS_DIR) -> dict[str, str]:
     """Load static prompt files used for Haiku chart triage."""
     prompt_path = Path(prompts_dir).expanduser()
     return {
-        "strategy_master": _load_prompt_file(prompt_path, "STRATEGY_MASTER.md"),
-        "triage_prompt": _load_prompt_file(prompt_path, "HAIKU_CHART_TRIAGE_PROMPT.md"),
-        "output_schema": _load_prompt_file(prompt_path, "OUTPUT_SCHEMA.md"),
+        "strategy_master": _load_prompt_file(prompt_path, "STRATEGY_MASTER"),
+        "triage_prompt": _load_prompt_file(prompt_path, "HAIKU_CHART_TRIAGE_PROMPT"),
+        "output_schema": _load_prompt_file(prompt_path, "OUTPUT_SCHEMA"),
     }
 
 

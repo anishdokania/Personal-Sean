@@ -771,7 +771,9 @@ def apply_primary_universe_gate_to_candidates(
     """Apply the primary hard universe gate to every scanned candidate row."""
     if candidates_df is None or candidates_df.empty:
         empty = pd.DataFrame()
-        empty.attrs["primary_gate_results"] = empty
+        # Must be a separate frame: a DataFrame stored in its own .attrs makes
+        # .copy() recurse forever, because pandas deep-copies attrs.
+        empty.attrs["primary_gate_results"] = pd.DataFrame()
         empty.attrs["primary_gate_survivor_count"] = 0
         empty.attrs["primary_gate_rejected_count"] = 0
         return empty
@@ -785,7 +787,7 @@ def apply_primary_universe_gate_to_candidates(
 
     gated_results = pd.DataFrame(gated_rows)
     if gated_results.empty:
-        gated_results.attrs["primary_gate_results"] = gated_results
+        gated_results.attrs["primary_gate_results"] = pd.DataFrame()
         gated_results.attrs["primary_gate_survivor_count"] = 0
         gated_results.attrs["primary_gate_rejected_count"] = 0
         return gated_results
