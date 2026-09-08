@@ -206,28 +206,50 @@ def _pct_change_over_bars(closes: pd.Series, bars: int) -> Optional[float]:
 # --------------------------------------------------------------------------- #
 # The rules
 # --------------------------------------------------------------------------- #
-def evaluate(symbol: str, df: pd.DataFrame, config: BacktestConfig) -> Optional[WatchRow]:
-    """Run the full rule stack on one symbol's latest bar. None = not a candidate."""
+def evaluate(
+    symbol: str,
+    df: pd.DataFrame,
+    config: BacktestConfig,
+    funnel: Optional[dict[str, int]] = None,
+) -> Optional[WatchRow]:
+    """Run the full rule stack on one symbol's latest bar. None = not a candidate.
+
+    Pass `funnel` (a stage -> count dict) to record where each symbol dropped
+    out. That is how you tell a threshold that is too tight from one that is
+    too loose without guessing.
+    """
+
+    def drop(stage: str) -> None:
+        if funnel is not None:
+            funnel[stage] = funnel.get(stage, 0) + 1
+
+    drop("evaluated")
+
     if df is None or len(df) < MIN_BARS_REQUIRED:
+        drop("fail_history")
         return None
 
     closes = df["Close"]
     close = float(closes.iloc[-1])
     if not np.isfinite(close) or close <= MIN_PRICE:
+        drop("fail_price")
         return None
 
     # Stage 2 - liquidity.
     avg_volume = float(df["Volume"].tail(20).mean())
     if not np.isfinite(avg_volume) or avg_volume < MIN_AVG_VOLUME_20D:
+        drop("fail_volume")
         return None
     avg_dollar_volume = avg_volume * close
     if avg_dollar_volume < MIN_AVG_DOLLAR_VOLUME_20D:
+        drop("fail_dollar_volume")
         return None
 
     # Stage 3 - movement.
     adrp = adr_pct(df, ADR_LOOKBACK)
     adr = adr_abs(df, ADR_LOOKBACK)
     if adrp is None or adr is None or adrp < MIN_ADR_PCT:
+        drop("fail_adr")
         return None
 
     # Stage 4 - trend.
@@ -237,10 +259,12 @@ def evaluate(symbol: str, df: pd.DataFrame, config: BacktestConfig) -> Optional[
     ema_mid_prior = float(ema_mid_series.iloc[-(TREND_EMA_RISING_BARS + 1)])
     ema_fast = float(_ema(closes, TREND_EMA_FAST).iloc[-1])
     if close <= ema_slow or ema_mid < ema_mid_prior:
+        drop("fail_trend")
         return None
 
     dist_ema8_adr = (close - ema_fast) / adr
     if dist_ema8_adr > EXTENDED_ADR_ABOVE_EMA8:
+        drop("fail_extended")
         return None  # extended: this is a chase, not a watchlist name
 
     perf_1w = _pct_change_over_bars(closes, 5)
@@ -293,12 +317,15 @@ def evaluate(symbol: str, df: pd.DataFrame, config: BacktestConfig) -> Optional[
         if risk > 0 and entry < close:
             risk_pct = 100.0 * risk / entry
             target = nearest_swing_high_above(df, entry, SWING_PIVOT_K, SWING_LOOKBACK)
-            if (
-                target is not None
-                and (target - entry) >= MIN_RR * risk
-                and risk_pct <= MAX_RISK_PCT_OF_PRICE
-            ):
+            if target is None:
+                drop("reclaim_no_target")
+            elif (target - entry) < MIN_RR * risk:
+                drop("reclaim_below_min_rr")
+            elif risk_pct > MAX_RISK_PCT_OF_PRICE:
+                drop("reclaim_risk_too_wide")
+            else:
                 # Rank triggered names by reward:risk. Nothing subjective.
+                drop("triggered")
                 return build(
                     "TRIGGERED",
                     entry_result.entry_type,
@@ -313,8 +340,10 @@ def evaluate(symbol: str, df: pd.DataFrame, config: BacktestConfig) -> Optional[
         # Rank by tightness to the 8 EMA first, then by 1M strength.
         tightness = FORMING_MAX_ADR_ABOVE_EMA8 - abs(dist_ema8_adr)
         strength = (perf_1m or 0.0) / 100.0
+        drop("forming")
         return build("FORMING", "ema8_pullback", None, None, None, tightness + strength)
 
+    drop("fail_not_near_ema8")
     return None
 
 
@@ -353,6 +382,44 @@ def render_markdown(rows: list[WatchRow], stats: dict[str, Any]) -> str:
         f"- Runtime: {stats.get('runtime')}",
         "",
     ]
+
+    funnel = stats.get("funnel") or {}
+    if funnel:
+        # Where names dropped out. This is the tuning dial: a stage that eats
+        # almost everything is the threshold to revisit first.
+        # Terminal stages partition the evaluated set: every symbol lands in
+        # exactly one. These counts sum to `evaluated`.
+        terminal = [
+            ("fail_history", "not enough history"),
+            ("fail_price", "price too low"),
+            ("fail_volume", "share volume too low"),
+            ("fail_dollar_volume", "dollar volume too low"),
+            ("fail_adr", "ADR% too low (too quiet)"),
+            ("fail_trend", "not in an uptrend"),
+            ("fail_extended", "extended above the 8 EMA"),
+            ("fail_not_near_ema8", "healthy but not near the 8 EMA"),
+            ("triggered", "-> TRIGGERED"),
+            ("forming", "-> FORMING"),
+        ]
+        # Near misses overlap the terminal stages on purpose: a reclaim that
+        # fails one of these can still qualify as FORMING, so it is counted in
+        # both. They do not sum to `evaluated`.
+        near_miss = [
+            ("reclaim_no_target", "reclaimed, but no overhead swing high"),
+            ("reclaim_below_min_rr", "reclaimed, but target under 1R"),
+            ("reclaim_risk_too_wide", "reclaimed, but stop too wide"),
+        ]
+        parts += ["## Where names dropped out", ""]
+        parts.append(f"- evaluated: {funnel.get('evaluated', 0)}")
+        for key, label in terminal:
+            if funnel.get(key):
+                parts.append(f"- {label}: {funnel[key]}")
+        if any(funnel.get(key) for key, _ in near_miss):
+            parts += ["", "Near misses on the reclaim entry (overlaps the above):", ""]
+            for key, label in near_miss:
+                if funnel.get(key):
+                    parts.append(f"- {label}: {funnel[key]}")
+        parts.append("")
 
     parts += ["## Triggered - reclaim fired on the last bar", ""]
     if triggered:
@@ -455,9 +522,10 @@ def build_watchlist(
     print("Applying rules...", flush=True)
     config = BacktestConfig(adr_lookback=ADR_LOOKBACK, min_adr_pct=MIN_ADR_PCT)
     rows: list[WatchRow] = []
+    funnel: dict[str, int] = {}
     for symbol, frame in frames.items():
         try:
-            row = evaluate(symbol, frame, config)
+            row = evaluate(symbol, frame, config, funnel=funnel)
         except Exception as exc:
             print(f"  ! {symbol} skipped: {exc}", flush=True)
             continue
@@ -481,6 +549,7 @@ def build_watchlist(
         "triggered_count": sum(1 for r in rows if r.bucket == "TRIGGERED"),
         "forming_count": sum(1 for r in rows if r.bucket == "FORMING"),
         "runtime": f"{int(elapsed // 60)}m {int(elapsed % 60)}s",
+        "funnel": funnel,
     }
     return rows, stats
 

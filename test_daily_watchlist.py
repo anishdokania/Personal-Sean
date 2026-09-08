@@ -236,3 +236,59 @@ class BatchSplitting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Funnel(unittest.TestCase):
+    """The funnel is the tuning dial; it has to count honestly."""
+
+    def test_records_each_drop_stage(self):
+        funnel: dict[str, int] = {}
+        cases = {
+            "fail_history": make_frame(uptrend(n=40)),
+            "fail_price": make_frame([c / 30 for c in uptrend()]),
+            "fail_volume": make_frame(uptrend(), volume=50_000),
+            "fail_adr": make_frame(uptrend(), range_pct=0.01),
+            "fail_trend": make_frame([100.0 - 0.4 * i for i in range(160)]),
+        }
+        for expected, frame in cases.items():
+            single: dict[str, int] = {}
+            dw.evaluate("X", frame, CONFIG, funnel=single)
+            self.assertEqual(single.get(expected), 1, f"{expected} not recorded: {single}")
+            dw.evaluate("X", frame, CONFIG, funnel=funnel)
+        self.assertEqual(funnel["evaluated"], len(cases))
+
+    def test_counts_reconcile(self):
+        """Terminal stages partition the evaluated set.
+
+        reclaim_* keys are deliberately excluded: they are near-miss markers
+        that overlap a terminal stage (a reclaim with no target can still be
+        FORMING), so they are not part of the partition.
+        """
+        funnel: dict[str, int] = {}
+        frames = [make_frame(uptrend()) for _ in range(4)]
+        frames.append(make_frame(uptrend(), volume=50_000))
+        for frame in frames:
+            dw.evaluate("X", frame, CONFIG, funnel=funnel)
+        terminal = sum(
+            v for k, v in funnel.items()
+            if k != "evaluated" and not k.startswith("reclaim_")
+        )
+        self.assertEqual(
+            terminal, funnel["evaluated"],
+            f"terminal stages must partition the evaluated set: {funnel}",
+        )
+
+    def test_funnel_is_optional(self):
+        self.assertIsNotNone(dw.evaluate("OK", make_frame(uptrend()), CONFIG))
+
+    def test_markdown_renders_funnel(self):
+        stats = {
+            "run_date": "2026-09-08", "as_of": "2026-09-05", "universe_count": 10,
+            "with_data": 10, "candidates": 0, "triggered_count": 0,
+            "forming_count": 0, "runtime": "1m",
+            "funnel": {"evaluated": 10, "fail_adr": 7, "fail_trend": 3},
+        }
+        md = dw.render_markdown([], stats)
+        self.assertIn("Where names dropped out", md)
+        self.assertIn("ADR% too low", md)
+        self.assertIn("evaluated: 10", md)
