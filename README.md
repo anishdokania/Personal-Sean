@@ -1,4 +1,38 @@
-# Personal-Sean — Daily Chart AI Scanner
+# Personal-Sean
+
+## Daily Watchlist (current, no AI)
+
+`daily_watchlist.py` is the daily driver. It rebuilds the U.S.-listed universe
+from scratch each run, screens it with fixed rules, and emails a watchlist.
+No API key, no LLM, no cost — the same input always produces the same list.
+
+```bash
+python daily_watchlist.py              # scan, save, email
+python daily_watchlist.py --no-email   # scan and save only
+python daily_watchlist.py --limit 300  # quick partial scan
+```
+
+Every threshold that decides what lands on the list is a constant at the top of
+`daily_watchlist.py`. The stages:
+
+1. **Universe** — all U.S.-listed common stocks, rebuilt fresh each run.
+2. **Liquidity** — price > $5, 20d avg volume > 1M, 20d avg dollar volume > $20M.
+3. **Movement** — ADR% (20d) ≥ 5%.
+4. **Trend** — close above the 50 EMA, 21 EMA rising.
+5. **Setup** — each survivor is either `TRIGGERED` (undercut-and-reclaim fired on
+   the last bar, with a swing-high target ≥ 1R away) or `FORMING` (pulling into
+   the 8 EMA). Anything extended past 2 ADR above the 8 EMA is dropped.
+
+Scheduled weekdays at 6 AM America/Chicago by
+`.github/workflows/daily-watchlist.yml`. It needs only the SMTP secrets.
+
+Rules are covered by offline tests — no network needed:
+
+```bash
+python -m unittest test_daily_watchlist -v
+```
+
+## Legacy: Chart AI Scanner (LLM, no longer scheduled)
 
 An end-to-end, decision-support scanner for U.S. equities. It scans sectors,
 filters stocks, runs deterministic technical detectors, layers on Claude
