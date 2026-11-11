@@ -48,8 +48,10 @@ from backtest.adr import adr_abs, adr_pct
 from backtest.config import BacktestConfig
 from backtest.entry_models import detect_entry
 from backtest.signals import nearest_swing_high_above
-from email_report import send_report_email
+from email_report import send_email
 from universe import load_us_listed_universe
+import watchlist_charts
+import watchlist_email
 
 
 # --------------------------------------------------------------------------- #
@@ -363,6 +365,23 @@ def _table(rows: list[WatchRow], columns: list[tuple[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def rules_lines() -> list[str]:
+    """The rules in plain words, for the report footer (Markdown and HTML)."""
+    return [
+        f"Price > ${MIN_PRICE:.0f}, 20d avg volume > {MIN_AVG_VOLUME_20D:,}, "
+        f"20d avg dollar volume > ${MIN_AVG_DOLLAR_VOLUME_20D:,}",
+        f"ADR% (20d) >= {MIN_ADR_PCT}%",
+        f"Close above the {TREND_EMA_SLOW} EMA, {TREND_EMA_MID} EMA rising over "
+        f"{TREND_EMA_RISING_BARS} bars",
+        f"Dropped if more than {EXTENDED_ADR_ABOVE_EMA8} ADR above the "
+        f"{TREND_EMA_FAST} EMA (chase)",
+        "TRIGGERED: bar undercut the prior low / 8 EMA / 21 EMA and closed back "
+        "above it, with a swing-high target at least 1R away",
+        f"FORMING: within {FORMING_MAX_ADR_ABOVE_EMA8} ADR above to "
+        f"{FORMING_MAX_ADR_BELOW_EMA8} ADR below the {TREND_EMA_FAST} EMA",
+    ]
+
+
 def render_markdown(rows: list[WatchRow], stats: dict[str, Any]) -> str:
     triggered = [r for r in rows if r.bucket == "TRIGGERED"][:MAX_TRIGGERED_IN_EMAIL]
     forming = [r for r in rows if r.bucket == "FORMING"][:MAX_FORMING_IN_EMAIL]
@@ -466,17 +485,7 @@ def render_markdown(rows: list[WatchRow], stats: dict[str, Any]) -> str:
         "",
         "## The rules",
         "",
-        f"- Price > ${MIN_PRICE:.0f}, 20d avg volume > {MIN_AVG_VOLUME_20D:,}, "
-        f"20d avg dollar volume > ${MIN_AVG_DOLLAR_VOLUME_20D:,}",
-        f"- ADR% (20d) >= {MIN_ADR_PCT}%",
-        f"- Close above the {TREND_EMA_SLOW} EMA, {TREND_EMA_MID} EMA rising over "
-        f"{TREND_EMA_RISING_BARS} bars",
-        f"- Dropped if more than {EXTENDED_ADR_ABOVE_EMA8} ADR above the "
-        f"{TREND_EMA_FAST} EMA (chase)",
-        "- TRIGGERED: bar undercut the prior low / 8 EMA / 21 EMA and closed back "
-        "above it, with a swing-high target at least 1R away",
-        f"- FORMING: within {FORMING_MAX_ADR_ABOVE_EMA8} ADR above to "
-        f"{FORMING_MAX_ADR_BELOW_EMA8} ADR below the {TREND_EMA_FAST} EMA",
+        *(f"- {rule}" for rule in rules_lines()),
         "",
         "Research only. No orders are placed.",
         "",
@@ -505,7 +514,8 @@ def save_outputs(rows: list[WatchRow], markdown: str, output_dir: str) -> dict[s
 # --------------------------------------------------------------------------- #
 def build_watchlist(
     limit: Optional[int] = None, history_days: int = HISTORY_DAYS
-) -> tuple[list[WatchRow], dict[str, Any]]:
+) -> tuple[list[WatchRow], dict[str, Any], dict[str, pd.DataFrame]]:
+    """Scan the universe. Also returns the bars of every listed name, for charts."""
     started = time.perf_counter()
 
     print("Loading U.S.-listed universe...", flush=True)
@@ -551,7 +561,8 @@ def build_watchlist(
         "runtime": f"{int(elapsed // 60)}m {int(elapsed % 60)}s",
         "funnel": funnel,
     }
-    return rows, stats
+    listed_frames = {r.symbol: frames[r.symbol] for r in rows if r.symbol in frames}
+    return rows, stats, listed_frames
 
 
 def parse_args() -> argparse.Namespace:
@@ -573,7 +584,7 @@ def main() -> int:
     load_dotenv()
     args = parse_args()
 
-    rows, stats = build_watchlist(limit=args.limit, history_days=args.history_days)
+    rows, stats, frames = build_watchlist(limit=args.limit, history_days=args.history_days)
     markdown = render_markdown(rows, stats)
     paths = save_outputs(rows, markdown, args.output_dir)
 
@@ -582,21 +593,51 @@ def main() -> int:
     print(f"Report saved: {paths['report']}", flush=True)
     print(f"CSV saved: {paths['csv']}", flush=True)
 
+    # Charts and the HTML body are a presentation layer: if anything in them
+    # breaks, the plain-text email with the CSV still goes out.
+    html: Optional[str] = None
+    inline_images: dict[str, str] = {}
+    attachments = [paths["csv"]]
+    try:
+        stamp = Path(paths["report"]).stem.removeprefix("watchlist_")
+        chart_paths = watchlist_charts.render_charts(rows, frames, args.output_dir, stamp)
+        pdf = watchlist_charts.charts_pdf(
+            rows, chart_paths, Path(args.output_dir) / f"watchlist_charts_{stamp}.pdf"
+        )
+        if pdf is not None:
+            attachments.append(str(pdf))
+            print(f"Charts PDF saved: {pdf}", flush=True)
+        inline = [s for s in watchlist_email.emailed_chart_symbols(rows) if s in chart_paths]
+        inline_images = {watchlist_email.chart_cid(s): str(chart_paths[s]) for s in inline}
+        html = watchlist_email.render_html(rows, stats, set(inline), rules_lines())
+        preview = Path(args.output_dir) / f"watchlist_{stamp}.html"
+        preview_html = html
+        for cid, png in inline_images.items():
+            preview_html = preview_html.replace(f"cid:{cid}", Path(png).resolve().as_uri())
+        preview.write_text(preview_html, encoding="utf-8")
+        print(f"HTML preview saved: {preview}", flush=True)
+    except Exception as exc:
+        print(f"  ! charts/HTML skipped, sending plain text: {exc}", flush=True)
+        html, inline_images = None, {}
+
     if args.no_email:
         print("Email skipped (--no-email).", flush=True)
         return 0
 
     subject_prefix = os.getenv("REPORT_EMAIL_SUBJECT_PREFIX", "Daily Watchlist")
+    top = [r.symbol for r in rows if r.bucket == "TRIGGERED"][:3]
     subject = (
-        f"{subject_prefix} - {stats['run_date']} - "
+        f"{subject_prefix} - {stats['as_of']} - "
         f"{stats['triggered_count']} triggered, {stats['forming_count']} forming"
+        + (f" - top: {', '.join(top)}" if top else "")
     )
     try:
-        send_report_email(
-            report_path=paths["report"],
+        send_email(
             subject=subject,
             body=markdown,
-            extra_attachments=[paths["csv"]],
+            attachments=attachments,
+            html=html,
+            inline_images=inline_images,
         )
     except Exception as exc:
         print(f"Email failed: {exc}", flush=True)

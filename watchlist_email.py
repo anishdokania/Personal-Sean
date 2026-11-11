@@ -1,0 +1,235 @@
+"""
+HTML body for the daily watchlist email.
+
+Built for a phone at 6 AM: the plan for the best names first, each with its
+chart, then a compact table of everything else, then the diagnostics (funnel
+and rules) at the bottom where they are out of the way.
+
+Email clients ignore <style> blocks and most CSS, so everything is inline and
+laid out with tables. Charts are referenced as cid: images; the sender attaches
+them as related parts so they show inline instead of as attachments.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from html import escape
+from typing import Any, Optional
+
+from watchlist_charts import setup_label
+
+TOP_TRIGGERED_WITH_CHARTS = 10
+TOP_FORMING_WITH_CHARTS = 6
+
+FONT = "-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+INK = "#1f2937"
+MUTED = "#6b7280"
+LINE = "#e5e7eb"
+ENTRY = "#1e3a8a"
+STOP = "#d32f2f"
+TARGET = "#2e7d32"
+WATCH = "#f57c00"
+
+
+def chart_cid(symbol: str) -> str:
+    return f"chart-{symbol.lower()}"
+
+
+def _money(value: Optional[float]) -> str:
+    return "-" if value is None else f"{value:,.2f}"
+
+
+def _pct(value: Optional[float], signed: bool = True) -> str:
+    if value is None:
+        return "-"
+    return f"{value:+.1f}%" if signed else f"{value:.1f}%"
+
+
+def _level_cell(label: str, value: str, color: str) -> str:
+    return (
+        f'<td width="33%" style="padding:6px 4px;border-top:3px solid {color};text-align:center">'
+        f'<div style="font-size:11px;color:{MUTED}">{label}</div>'
+        f'<div style="font-size:16px;font-weight:700;color:{color}">{value}</div></td>'
+    )
+
+
+def _card(row, rank: int, has_chart: bool) -> str:
+    head = (
+        f'<div style="font-size:18px;font-weight:700;color:{INK}">'
+        f'{rank}. {escape(row.symbol)} '
+        f'<span style="font-size:13px;font-weight:400;color:{MUTED}">'
+        f'{escape(setup_label(row.setup))}</span></div>'
+        f'<div style="font-size:12px;color:{MUTED};margin:2px 0 8px">'
+        f'Close {_money(row.close)} · ADR {_pct(row.adr_pct, signed=False)} · '
+        + (f"R:R {row.rr:.1f} · " if row.rr is not None else "")
+        + f'1W {_pct(row.perf_1w)} · 1M {_pct(row.perf_1m)}</div>'
+    )
+    if row.bucket == "TRIGGERED":
+        target_pct = 100.0 * (row.target / row.entry - 1) if row.entry and row.target else None
+        levels = (
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+            f'style="border-collapse:collapse;background:#f9fafb;margin-bottom:8px"><tr>'
+            + _level_cell("ENTRY (limit)", _money(row.entry), ENTRY)
+            + _level_cell(f"STOP −{_pct(row.risk_pct, signed=False)}", _money(row.stop), STOP)
+            + _level_cell(f"TARGET {_pct(target_pct)}", _money(row.target), TARGET)
+            + "</tr></table>"
+        )
+    else:
+        levels = (
+            f'<div style="font-size:13px;color:{WATCH};margin-bottom:8px">'
+            f'{row.dist_ema8_adr:+.2f} ADR from the 8 EMA. Trigger: undercut the 8 EMA or '
+            f"today's low, then close back above it.</div>"
+        )
+    chart = (
+        f'<img src="cid:{chart_cid(row.symbol)}" alt="{escape(row.symbol)} chart" width="600" '
+        'style="display:block;width:100%;max-width:600px;height:auto;border:1px solid '
+        f'{LINE}">'
+        if has_chart
+        else ""
+    )
+    return (
+        f'<div style="padding:14px 0;border-bottom:1px solid {LINE}">{head}{levels}{chart}</div>'
+    )
+
+
+def _section(title: str, subtitle: str) -> str:
+    return (
+        f'<div style="margin:22px 0 4px;font-size:15px;font-weight:700;color:{INK};'
+        f'text-transform:uppercase;letter-spacing:0.5px">{title}</div>'
+        f'<div style="font-size:12px;color:{MUTED}">{subtitle}</div>'
+    )
+
+
+SHORT_SETUP = {
+    "unr_pdl": "UnR PDL",
+    "unr_ema8": "UnR 8EMA",
+    "unr_ema21": "UnR 21EMA",
+    "ema8_pullback": "Forming",
+}
+
+
+def _compact_table(head: list[str], body: list[list[str]]) -> str:
+    # Styles sit on the table and rows, not on every cell: with ~60 rows,
+    # per-cell inline CSS pushes the email past Gmail's ~102 KB clipping limit.
+    out = [
+        '<table role="presentation" cellspacing="0" cellpadding="5" width="100%" '
+        f'style="border-collapse:collapse;font-size:12px;color:{INK}">',
+        f'<tr style="color:{MUTED};font-size:11px;text-align:left">'
+        + "".join(f"<th>{h}</th>" for h in head) + "</tr>",
+    ]
+    for i, cells in enumerate(body):
+        shade = ' style="background:#f6f7f9"' if i % 2 == 0 else ""
+        out.append(f"<tr{shade}>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
+def _rest_tables(triggered: list, forming: list) -> str:
+    """Six columns at most: what fits a phone without sideways scrolling."""
+    parts = []
+    if triggered:
+        parts.append(_compact_table(
+            ["Triggered", "Setup", "Entry", "Stop", "Target", "R:R"],
+            [[f"<b>{escape(r.symbol)}</b>", escape(SHORT_SETUP.get(r.setup, r.setup)),
+              _money(r.entry), _money(r.stop), _money(r.target),
+              f"{r.rr:.1f}" if r.rr is not None else "-"] for r in triggered],
+        ))
+    if forming:
+        parts.append('<div style="height:12px"></div>' if parts else "")
+        parts.append(_compact_table(
+            ["Forming", "Close", "From 8 EMA", "ADR", "1W", "1M"],
+            [[f"<b>{escape(r.symbol)}</b>", _money(r.close), f"{r.dist_ema8_adr:+.2f} ADR",
+              _pct(r.adr_pct, signed=False), _pct(r.perf_1w), _pct(r.perf_1m)]
+             for r in forming],
+        ))
+    return "".join(parts)
+
+
+FUNNEL_LABELS = [
+    ("evaluated", "evaluated"),
+    ("fail_history", "not enough history"),
+    ("fail_price", "price too low"),
+    ("fail_volume", "share volume too low"),
+    ("fail_dollar_volume", "dollar volume too low"),
+    ("fail_adr", "ADR% too low"),
+    ("fail_trend", "not in an uptrend"),
+    ("fail_extended", "extended above the 8 EMA"),
+    ("fail_not_near_ema8", "healthy but not near the 8 EMA"),
+    ("triggered", "→ triggered"),
+    ("forming", "→ forming"),
+]
+
+
+def _footer(stats: dict[str, Any], rules: list[str]) -> str:
+    funnel = stats.get("funnel", {}) or {}
+    items = [f"{label}: {funnel[key]:,}" for key, label in FUNNEL_LABELS if key in funnel]
+    return (
+        f'<div style="margin-top:26px;padding-top:12px;border-top:2px solid {LINE};'
+        f'font-size:11px;color:{MUTED};line-height:1.6">'
+        f"<b>Where names dropped out</b><br>{' · '.join(items)}<br><br>"
+        f"<b>The rules</b><br>{'<br>'.join(escape(r) for r in rules)}<br><br>"
+        f"Universe {stats.get('universe_count', 0):,} · with data "
+        f"{stats.get('with_data', 0):,} · runtime {escape(str(stats.get('runtime', '')))}<br>"
+        "Attached: every chart (PDF) and the full list (CSV). Research only; no orders are "
+        "placed.</div>"
+    )
+
+
+def render_html(
+    rows: list, stats: dict[str, Any], charted: set[str], rules: list[str]
+) -> str:
+    """The full email body. ``charted`` is the set of symbols with a chart image."""
+    triggered = [r for r in rows if r.bucket == "TRIGGERED"]
+    forming = [r for r in rows if r.bucket == "FORMING"]
+    top_t = triggered[:TOP_TRIGGERED_WITH_CHARTS]
+    top_f = forming[:TOP_FORMING_WITH_CHARTS]
+    rest_t, rest_f = triggered[len(top_t):], forming[len(top_f):]
+
+    try:
+        day = date.fromisoformat(stats.get("as_of", "")).strftime("%A, %b %d")
+    except ValueError:
+        day = stats.get("as_of", "")
+
+    parts = [
+        f'<div style="font-family:{FONT};color:{INK};max-width:640px;margin:0 auto;'
+        'padding:8px 12px">',
+        f'<div style="font-size:22px;font-weight:800">Daily Watchlist</div>',
+        f'<div style="font-size:13px;color:{MUTED};margin-bottom:10px">'
+        f"Data as of the close on {escape(day)}</div>",
+        '<table role="presentation" cellspacing="0" cellpadding="0"><tr>'
+        f'<td style="background:{ENTRY};color:#fff;padding:6px 12px;font-size:14px;'
+        f'font-weight:700">{len(triggered)} triggered</td><td width="8"></td>'
+        f'<td style="background:{WATCH};color:#fff;padding:6px 12px;font-size:14px;'
+        f'font-weight:700">{len(forming)} forming</td></tr></table>',
+    ]
+    if not rows:
+        parts.append(f'<p style="font-size:14px">Nothing passed the rules today.</p>')
+    if top_t:
+        parts.append(_section(
+            f"Triggered: top {len(top_t)}",
+            "Reclaim fired on the last bar. Plan: a limit back at the reclaimed level for the "
+            "next session.",
+        ))
+        parts += [_card(r, i, r.symbol in charted) for i, r in enumerate(top_t, 1)]
+    if top_f:
+        parts.append(_section(
+            f"Forming: top {len(top_f)}",
+            "Pulling into the 8 EMA, not reclaimed yet. Watch these for tomorrow's trigger.",
+        ))
+        parts += [_card(r, i, r.symbol in charted) for i, r in enumerate(top_f, 1)]
+    if rest_t or rest_f:
+        parts.append(_section(
+            f"Everything else ({len(rest_t) + len(rest_f)})",
+            "Charts for these are in the attached PDF.",
+        ))
+        parts.append(_rest_tables(rest_t, rest_f))
+    parts.append(_footer(stats, rules))
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def emailed_chart_symbols(rows: list) -> list[str]:
+    """Symbols whose charts go inline in the body (the rest live in the PDF)."""
+    triggered = [r for r in rows if r.bucket == "TRIGGERED"][:TOP_TRIGGERED_WITH_CHARTS]
+    forming = [r for r in rows if r.bucket == "FORMING"][:TOP_FORMING_WITH_CHARTS]
+    return [r.symbol for r in triggered + forming]
