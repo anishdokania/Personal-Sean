@@ -20,7 +20,6 @@ import pandas as pd
 from technical import analyze_stock_technicals
 from today_focus import evaluate_today_focus
 from focus_structure import evaluate_focus_structure
-from main import score_sector_alignment
 
 from .config import (
     BacktestConfig,
@@ -276,6 +275,11 @@ def evaluate_bar(
             _pct_change_over_bars(closes, 63),
         )
         sector_etf = inputs.get("sector_etf")  # type: ignore[assignment]
+        # Imported here, not at module top: main.py pulls in the LLM chart
+        # stack (anthropic, mplfinance), and the daily watchlist imports this
+        # module for nearest_swing_high_above without needing any of it.
+        from main import score_sector_alignment
+
         sector_alignment_score = score_sector_alignment(inputs)
         if sector_alignment_score < FOCUS_GATE_MIN_SECTOR:
             drop("fail_sector")

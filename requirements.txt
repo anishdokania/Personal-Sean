@@ -7,4 +7,5 @@ anthropic
 lxml
 matplotlib
 mplfinance
+six  # mplfinance imports it but does not declare it
 pypdf
