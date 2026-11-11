@@ -126,14 +126,27 @@ def send_email(
     body: str,
     attachments: Optional[Iterable[str | Path]] = None,
     config: Optional[EmailConfig] = None,
+    html: Optional[str] = None,
+    inline_images: Optional[dict[str, str | Path]] = None,
 ) -> None:
-    """Send an email with optional file attachments."""
+    """Send an email with optional file attachments.
+
+    With ``html``, ``body`` becomes the plain-text fallback. ``inline_images``
+    maps a Content-ID to a PNG; the HTML shows it with ``<img src="cid:ID">``.
+    """
     email_config = config or load_email_config()
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = email_config.sender
     message["To"] = email_config.recipient
     message.set_content(body)
+    if html:
+        message.add_alternative(html, subtype="html")
+        html_part = message.get_payload()[-1]
+        for cid, image_path in (inline_images or {}).items():
+            html_part.add_related(
+                Path(image_path).read_bytes(), maintype="image", subtype="png", cid=f"<{cid}>"
+            )
 
     for attachment in attachments or []:
         _attach_file(message, Path(attachment))
