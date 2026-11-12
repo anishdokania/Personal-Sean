@@ -96,7 +96,7 @@ def _read_cache(path: Path) -> dict[str, tuple[str, str]]:
         return {
             r["symbol"]: (r["sector"], r["industry"])
             for r in csv.DictReader(handle)
-            if r.get("symbol")
+            if r.get("symbol") and r.get("sector")  # a blank row is a past failure: retry it
         }
 
 
