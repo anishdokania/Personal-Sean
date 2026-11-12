@@ -279,8 +279,8 @@ def _render_grouped(rows: list, stats: dict[str, Any], charted: set[str]) -> lis
     parts = [_regime_banner(leadership.regime)]
     parts.append(_section(
         "Leading groups today",
-        "Top 5 over 1W / 1M / 3M, overlapping in at least 2 windows. Sectors first (max 3), "
-        "then themes from outside them.",
+        "SPDR sectors in the top 5 over 1W / 1M / 3M, overlapping in at least 2 windows "
+        "(max 3). Grouped for reading: the backtest found no edge from sector or RS alone.",
     ))
     parts.append(_leaders_table(leadership, layout))
     if not layout:

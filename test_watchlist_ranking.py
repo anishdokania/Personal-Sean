@@ -66,6 +66,16 @@ class RegimeTest(unittest.TestCase):
         self.assertEqual(wr.market_regime({"SPY": up, "QQQ": up}).level, 3)
 
 
+class ThemesOffTest(unittest.TestCase):
+    def test_compute_leadership_returns_no_themes(self):
+        path = np.linspace(50, 80, 120)
+        frames = {f"S{i}": _closes(path * (1 + i / 50)) for i in range(8)}
+        imap = {s: ("Technology", "Solar") for s in frames}
+        ref = {"XLK": _closes(path), "SPY": _closes(path), "QQQ": _closes(path)}
+        lead = wr.compute_leadership(frames, ref, imap)
+        self.assertEqual(lead.leading_themes, [])
+
+
 class RsTest(unittest.TestCase):
     def test_rs_orders_by_recent_weighted_return(self):
         returns = pd.DataFrame(

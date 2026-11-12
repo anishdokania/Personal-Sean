@@ -137,6 +137,20 @@ class Buckets(unittest.TestCase):
         self.assertGreaterEqual(row.rr, dw.MIN_RR)
         self.assertLessEqual(row.risk_pct, dw.MAX_RISK_PCT_OF_PRICE)
 
+    def test_stop_inside_one_bar_of_noise_is_not_triggered(self):
+        """Same reclaim, but the undercut is a hair under the PDL: the stop would
+        sit under 0.1 ADR from the entry, so the plan is dropped."""
+        closes = wavy_uptrend(n=158)
+        closes.append(closes[-1] - 2.0)
+        closes.append(closes[-1] + 2.5)
+        last = len(closes) - 1
+        prior_low = closes[last - 1] - closes[last - 1] * 0.04
+        frame = make_frame(closes, lows={last: prior_low - 0.01})
+        funnel = {}
+        row = dw.evaluate("TIGHT", frame, CONFIG, funnel=funnel)
+        self.assertEqual(funnel.get("reclaim_stop_too_tight"), 1)
+        self.assertTrue(row is None or row.bucket != "TRIGGERED")
+
 
 class Determinism(unittest.TestCase):
     def test_same_input_same_output(self):

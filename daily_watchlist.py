@@ -84,6 +84,9 @@ SWING_PIVOT_K = 3
 SWING_LOOKBACK = 40
 MIN_RR = 1.0
 MAX_RISK_PCT_OF_PRICE = 15.0
+# Stops tighter than this sit inside one bar's noise. Backtest 2021-12..2026-11:
+# 1,539 such plans averaged -0.27R to -0.42R, the worst bucket by far.
+MIN_STOP_ADR = 0.1
 
 # Data + output.
 HISTORY_DAYS = 400           # ~1.5y of bars: enough for EMA50 and 3M returns
@@ -328,6 +331,8 @@ def evaluate(
             target = nearest_swing_high_above(df, entry, SWING_PIVOT_K, SWING_LOOKBACK)
             if target is None:
                 drop("reclaim_no_target")
+            elif risk < MIN_STOP_ADR * adr:
+                drop("reclaim_stop_too_tight")
             elif (target - entry) < MIN_RR * risk:
                 drop("reclaim_below_min_rr")
             elif risk_pct > MAX_RISK_PCT_OF_PRICE:
@@ -383,7 +388,8 @@ def rules_lines() -> list[str]:
         f"Dropped if more than {EXTENDED_ADR_ABOVE_EMA8} ADR above the "
         f"{TREND_EMA_FAST} EMA (chase)",
         "TRIGGERED: bar undercut the prior low / 8 EMA / 21 EMA and closed back "
-        "above it, with a swing-high target at least 1R away",
+        "above it, with a swing-high target at least 1R away and a stop at least "
+        f"{MIN_STOP_ADR} ADR below the entry",
         f"FORMING: within {FORMING_MAX_ADR_ABOVE_EMA8} ADR above to "
         f"{FORMING_MAX_ADR_BELOW_EMA8} ADR below the {TREND_EMA_FAST} EMA",
     ]

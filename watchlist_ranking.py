@@ -58,6 +58,10 @@ TOP_N = 5                     # "top 5 performers" per window [Blueprint]
 MIN_WINDOWS_IN_TOP = 2        # "see if any of them overlap"
 LEADING_SECTORS_MAX = 3       # the 2-3 sectors the eBook ends up trading
 LEADING_THEMES_MAX = 5
+# Themes (hot industries outside the leading sectors) are off: in the backtest
+# (2021-12..2026-11, 854 trades) they averaged -0.31R, day-clustered t = -3.9,
+# negative every year. Their names now sit with "outside".
+USE_THEMES = False
 MIN_INDUSTRY_MEMBERS = 5      # an "industry" of 2 stocks is noise, not a theme
 
 # Relative strength: percentile of a recent-weighted return across the liquid
@@ -366,7 +370,8 @@ def compute_leadership(
     leading_sectors = list(sectors.index[sectors["leading"]]) if not sectors.empty else []
     return Leadership(
         sectors=sectors,
-        themes=industry_leadership(returns, industry_map, exclude_sectors=leading_sectors),
+        themes=(industry_leadership(returns, industry_map, exclude_sectors=leading_sectors)
+                if USE_THEMES else pd.DataFrame()),
         regime=market_regime({k: reference_frames.get(k) for k in ("SPY", "QQQ")}),
         rs=rs_ratings(returns),
     )
