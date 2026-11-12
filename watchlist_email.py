@@ -24,6 +24,7 @@ TOP_TRIGGERED_WITH_CHARTS = 10
 TOP_FORMING_WITH_CHARTS = 6
 # Grouped layout (when leading groups are known).
 CARDS_PER_GROUP = 4          # chart cards per group; the rest of the group is a table
+MAX_NAMES_PER_GROUP = 8      # one hot sector must not bury the others; overflow is in CSV/PDF
 MAX_INLINE_CHARTS = 16       # whole email; keeps it ~1-2 MB
 
 FONT = "-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
@@ -183,11 +184,12 @@ def _footer(stats: dict[str, Any], rules: list[str]) -> str:
     )
 
 
-def _grouped(rows: list) -> tuple[list[tuple[str, list, list]], list]:
-    """Split ranked rows into (group, card_rows, table_rows) plus the outside list.
+def _grouped(rows: list) -> tuple[list[tuple[str, list, list, int]], list]:
+    """Split ranked rows into (group, card_rows, table_rows, hidden) plus the outside list.
 
     Rows arrive ordered by watchlist_ranking.rank_rows, so groups come out
-    strongest first and names inside a group best first.
+    strongest first and names inside a group best first. Each group shows at
+    most MAX_NAMES_PER_GROUP names; ``hidden`` counts the rest.
     """
     groups: dict[str, list] = {}
     outside = []
@@ -199,9 +201,10 @@ def _grouped(rows: list) -> tuple[list[tuple[str, list, list]], list]:
     budget = MAX_INLINE_CHARTS
     layout = []
     for name, members in groups.items():
-        take = max(0, min(CARDS_PER_GROUP, budget, len(members)))
+        shown = members[:MAX_NAMES_PER_GROUP]
+        take = max(0, min(CARDS_PER_GROUP, budget, len(shown)))
         budget -= take
-        layout.append((name, members[:take], members[take:]))
+        layout.append((name, shown[:take], shown[take:], len(members) - len(shown)))
     return layout, outside
 
 
@@ -224,7 +227,7 @@ def _regime_banner(regime) -> str:
 
 
 def _leaders_table(leadership, layout) -> str:
-    counts = {name: len(cards) + len(rest) for name, cards, rest in layout}
+    counts = {name: len(cards) + len(rest) + hidden for name, cards, rest, hidden in layout}
     body = []
     for table, prefix in ((leadership.sectors, ""), (leadership.themes, "Theme: ")):
         if table is None or table.empty:
@@ -282,11 +285,16 @@ def _render_grouped(rows: list, stats: dict[str, Any], charted: set[str]) -> lis
     parts.append(_leaders_table(leadership, layout))
     if not layout:
         parts.append(f'<p style="font-size:14px">No names in the leading groups today.</p>')
-    for name, cards, rest in layout:
+    for name, cards, rest, hidden in layout:
         parts.append(_group_header(name, leadership))
         parts += [_card(r, i, r.symbol in charted) for i, r in enumerate(cards, 1)]
         if rest:
             parts.append('<div style="height:8px"></div>' + _group_rest_table(rest))
+        if hidden:
+            parts.append(
+                f'<div style="font-size:12px;color:{MUTED};margin-top:6px">+{hidden} more '
+                f"{escape(name)} names, lower ranked: in the attached CSV and PDF.</div>"
+            )
     if outside:
         parts.append(_section(
             f"Outside leading groups ({len(outside)})",
@@ -360,7 +368,7 @@ def emailed_chart_symbols(rows: list, stats: Optional[dict[str, Any]] = None) ->
     """Symbols whose charts go inline in the body (the rest live in the PDF)."""
     if stats is not None and _is_grouped(rows, stats):
         layout, _ = _grouped(rows)
-        return [r.symbol for _, cards, _ in layout for r in cards]
+        return [r.symbol for _, cards, _, _ in layout for r in cards]
     triggered = [r for r in rows if r.bucket == "TRIGGERED"][:TOP_TRIGGERED_WITH_CHARTS]
     forming = [r for r in rows if r.bucket == "FORMING"][:TOP_FORMING_WITH_CHARTS]
     return [r.symbol for r in triggered + forming]

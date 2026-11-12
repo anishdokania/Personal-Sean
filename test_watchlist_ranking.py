@@ -123,6 +123,23 @@ class RankRowsTest(unittest.TestCase):
         self.assertEqual(we.emailed_chart_symbols(ranked, stats), ["HC1"])
 
 
+class GroupCapTest(unittest.TestCase):
+    def test_each_group_shows_at_most_eight_names(self):
+        rows = [_row(f"H{i}") for i in range(12)] + [_row("E1")]
+        for r in rows:
+            r.group, r.rs = ("Energy" if r.symbol == "E1" else "Healthcare"), 80
+        layout, outside = we._grouped(rows)
+        healthcare = next(g for g in layout if g[0] == "Healthcare")
+        self.assertEqual(len(healthcare[1]) + len(healthcare[2]), we.MAX_NAMES_PER_GROUP)
+        self.assertEqual(healthcare[3], 4)
+        self.assertEqual([r.symbol for r in healthcare[1]], ["H0", "H1", "H2", "H3"])
+        self.assertEqual(outside, [])
+        stats = {"as_of": "2026-11-11", "funnel": {}, "leadership": RankRowsTest()._leadership()}
+        html = we.render_html(rows, stats, set(), dw.rules_lines())
+        self.assertIn("+4 more Healthcare names", html)
+        self.assertNotIn("<b>H11</b>", html)
+
+
 class IndustryCacheTest(unittest.TestCase):
     def test_only_uncached_symbols_are_fetched(self):
         with tempfile.TemporaryDirectory() as tmp:
