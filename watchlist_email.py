@@ -16,10 +16,15 @@ from datetime import date
 from html import escape
 from typing import Any, Optional
 
+import pandas as pd
+
 from watchlist_charts import setup_label
 
 TOP_TRIGGERED_WITH_CHARTS = 10
 TOP_FORMING_WITH_CHARTS = 6
+# Grouped layout (when leading groups are known).
+CARDS_PER_GROUP = 4          # chart cards per group; the rest of the group is a table
+MAX_INLINE_CHARTS = 16       # whole email; keeps it ~1-2 MB
 
 FONT = "-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
 INK = "#1f2937"
@@ -60,9 +65,12 @@ def _card(row, rank: int, has_chart: bool) -> str:
         f'<span style="font-size:13px;font-weight:400;color:{MUTED}">'
         f'{escape(setup_label(row.setup))}</span></div>'
         f'<div style="font-size:12px;color:{MUTED};margin:2px 0 8px">'
-        f'Close {_money(row.close)} · ADR {_pct(row.adr_pct, signed=False)} · '
+        + (f"RS {row.rs} · " if getattr(row, "rs", None) else "")
+        + f'Close {_money(row.close)} · ADR {_pct(row.adr_pct, signed=False)} · '
         + (f"R:R {row.rr:.1f} · " if row.rr is not None else "")
-        + f'1W {_pct(row.perf_1w)} · 1M {_pct(row.perf_1m)}</div>'
+        + f'1W {_pct(row.perf_1w)} · 1M {_pct(row.perf_1m)}'
+        + (f" · {escape(row.industry)}" if getattr(row, "industry", "") else "")
+        + "</div>"
     )
     if row.bucket == "TRIGGERED":
         target_pct = 100.0 * (row.target / row.entry - 1) if row.entry and row.target else None
@@ -175,35 +183,132 @@ def _footer(stats: dict[str, Any], rules: list[str]) -> str:
     )
 
 
+def _grouped(rows: list) -> tuple[list[tuple[str, list, list]], list]:
+    """Split ranked rows into (group, card_rows, table_rows) plus the outside list.
+
+    Rows arrive ordered by watchlist_ranking.rank_rows, so groups come out
+    strongest first and names inside a group best first.
+    """
+    groups: dict[str, list] = {}
+    outside = []
+    for row in rows:
+        if getattr(row, "group", ""):
+            groups.setdefault(row.group, []).append(row)
+        else:
+            outside.append(row)
+    budget = MAX_INLINE_CHARTS
+    layout = []
+    for name, members in groups.items():
+        take = max(0, min(CARDS_PER_GROUP, budget, len(members)))
+        budget -= take
+        layout.append((name, members[:take], members[take:]))
+    return layout, outside
+
+
+def _is_grouped(rows: list, stats: dict[str, Any]) -> bool:
+    return stats.get("leadership") is not None and any(getattr(r, "group", "") for r in rows)
+
+
+def _regime_banner(regime) -> str:
+    if regime is None:
+        return ""
+    color = {3: "#2e7d32", 2: "#558b2f", 1: WATCH, 0: STOP}[regime.level]
+    detail = " · ".join(f"{k} {escape(v.lower())}" for k, v in regime.detail.items())
+    return (
+        f'<div style="margin:12px 0 0;padding:10px 12px;border-left:5px solid {color};'
+        f'background:#f9fafb"><div style="font-size:14px;font-weight:700;color:{color}">'
+        f"Market: {escape(regime.label)}</div>"
+        f'<div style="font-size:12px;color:{INK}">{escape(regime.advice)}</div>'
+        f'<div style="font-size:11px;color:{MUTED}">{detail}</div></div>'
+    )
+
+
+def _leaders_table(leadership, layout) -> str:
+    counts = {name: len(cards) + len(rest) for name, cards, rest in layout}
+    body = []
+    for table, prefix in ((leadership.sectors, ""), (leadership.themes, "Theme: ")):
+        if table is None or table.empty:
+            continue
+        for name, r in table[table["leading"]].iterrows():
+            group = f"{prefix}{name}"
+            body.append([
+                f"<b>{escape(group)}</b>", f"{int(r['top5_count'])}/3",
+                _pct(r["1W"]), _pct(r["1M"]), _pct(r["3M"]), str(counts.get(group, 0)),
+            ])
+    if not body:
+        return ""
+    return _compact_table(["Leading group", "Top 5 in", "1W", "1M", "3M", "Names"], body)
+
+
+def _group_header(name: str, leadership) -> str:
+    table, key = (leadership.themes, name.removeprefix("Theme: ")) if name.startswith(
+        "Theme: ") else (leadership.sectors, name)
+    sub = ""
+    if table is not None and key in table.index:
+        r = table.loc[key]
+        sub = (f"Top 5 in {int(r['top5_count'])}/3 windows · 1W {_pct(r['1W'])} · "
+               f"1M {_pct(r['1M'])} · 3M {_pct(r['3M'])}")
+        if "members" in r and not pd.isna(r.get("members")):
+            sub += f" · {int(r['members'])} liquid members"
+    return _section(escape(name), sub)
+
+
+def _group_rest_table(rows: list) -> str:
+    return _compact_table(
+        ["Symbol", "Setup", "Entry", "Stop", "Target", "RS"],
+        [[f"<b>{escape(r.symbol)}</b>", escape(SHORT_SETUP.get(r.setup, r.setup)),
+          _money(r.entry), _money(r.stop), _money(r.target), str(r.rs or "-")] for r in rows],
+    )
+
+
+def _outside_table(rows: list) -> str:
+    return _compact_table(
+        ["Symbol", "Setup", "Sector / industry", "RS"],
+        [[f"<b>{escape(r.symbol)}</b>", escape(SHORT_SETUP.get(r.setup, r.setup)),
+          escape(getattr(r, "industry", "") or getattr(r, "sector", "") or "unknown"),
+          str(r.rs or "-")] for r in rows],
+    )
+
+
+def _render_grouped(rows: list, stats: dict[str, Any], charted: set[str]) -> list[str]:
+    leadership = stats["leadership"]
+    layout, outside = _grouped(rows)
+    parts = [_regime_banner(leadership.regime)]
+    parts.append(_section(
+        "Leading groups today",
+        "Top 5 over 1W / 1M / 3M, overlapping in at least 2 windows. Sectors first (max 3), "
+        "then themes from outside them.",
+    ))
+    parts.append(_leaders_table(leadership, layout))
+    if not layout:
+        parts.append(f'<p style="font-size:14px">No names in the leading groups today.</p>')
+    for name, cards, rest in layout:
+        parts.append(_group_header(name, leadership))
+        parts += [_card(r, i, r.symbol in charted) for i, r in enumerate(cards, 1)]
+        if rest:
+            parts.append('<div style="height:8px"></div>' + _group_rest_table(rest))
+    if outside:
+        parts.append(_section(
+            f"Outside leading groups ({len(outside)})",
+            "Shown while the sector filter is being validated. Charts are in the PDF.",
+        ))
+        parts.append(_outside_table(outside))
+    return parts
+
+
 def render_html(
     rows: list, stats: dict[str, Any], charted: set[str], rules: list[str]
 ) -> str:
     """The full email body. ``charted`` is the set of symbols with a chart image."""
+    if _is_grouped(rows, stats):
+        return _wrap(rows, stats, _render_grouped(rows, stats, charted), rules)
     triggered = [r for r in rows if r.bucket == "TRIGGERED"]
     forming = [r for r in rows if r.bucket == "FORMING"]
     top_t = triggered[:TOP_TRIGGERED_WITH_CHARTS]
     top_f = forming[:TOP_FORMING_WITH_CHARTS]
     rest_t, rest_f = triggered[len(top_t):], forming[len(top_f):]
 
-    try:
-        day = date.fromisoformat(stats.get("as_of", "")).strftime("%A, %b %d")
-    except ValueError:
-        day = stats.get("as_of", "")
-
-    parts = [
-        f'<div style="font-family:{FONT};color:{INK};max-width:640px;margin:0 auto;'
-        'padding:8px 12px">',
-        f'<div style="font-size:22px;font-weight:800">Daily Watchlist</div>',
-        f'<div style="font-size:13px;color:{MUTED};margin-bottom:10px">'
-        f"Data as of the close on {escape(day)}</div>",
-        '<table role="presentation" cellspacing="0" cellpadding="0"><tr>'
-        f'<td style="background:{ENTRY};color:#fff;padding:6px 12px;font-size:14px;'
-        f'font-weight:700">{len(triggered)} triggered</td><td width="8"></td>'
-        f'<td style="background:{WATCH};color:#fff;padding:6px 12px;font-size:14px;'
-        f'font-weight:700">{len(forming)} forming</td></tr></table>',
-    ]
-    if not rows:
-        parts.append(f'<p style="font-size:14px">Nothing passed the rules today.</p>')
+    parts = []
     if top_t:
         parts.append(_section(
             f"Triggered: top {len(top_t)}",
@@ -223,13 +328,39 @@ def render_html(
             "Charts for these are in the attached PDF.",
         ))
         parts.append(_rest_tables(rest_t, rest_f))
-    parts.append(_footer(stats, rules))
-    parts.append("</div>")
-    return "".join(parts)
+    return _wrap(rows, stats, parts, rules)
 
 
-def emailed_chart_symbols(rows: list) -> list[str]:
+def _wrap(rows: list, stats: dict[str, Any], body: list[str], rules: list[str]) -> str:
+    """Header (title, date, counts) + body + footer."""
+    try:
+        day = date.fromisoformat(stats.get("as_of", "")).strftime("%A, %b %d")
+    except ValueError:
+        day = stats.get("as_of", "")
+    triggered = sum(1 for r in rows if r.bucket == "TRIGGERED")
+    forming = sum(1 for r in rows if r.bucket == "FORMING")
+    head = [
+        f'<div style="font-family:{FONT};color:{INK};max-width:640px;margin:0 auto;'
+        'padding:8px 12px">',
+        '<div style="font-size:22px;font-weight:800">Daily Watchlist</div>',
+        f'<div style="font-size:13px;color:{MUTED};margin-bottom:10px">'
+        f"Data as of the close on {escape(day)}</div>",
+        '<table role="presentation" cellspacing="0" cellpadding="0"><tr>'
+        f'<td style="background:{ENTRY};color:#fff;padding:6px 12px;font-size:14px;'
+        f'font-weight:700">{triggered} triggered</td><td width="8"></td>'
+        f'<td style="background:{WATCH};color:#fff;padding:6px 12px;font-size:14px;'
+        f'font-weight:700">{forming} forming</td></tr></table>',
+    ]
+    if not rows:
+        head.append('<p style="font-size:14px">Nothing passed the rules today.</p>')
+    return "".join(head + body + [_footer(stats, rules), "</div>"])
+
+
+def emailed_chart_symbols(rows: list, stats: Optional[dict[str, Any]] = None) -> list[str]:
     """Symbols whose charts go inline in the body (the rest live in the PDF)."""
+    if stats is not None and _is_grouped(rows, stats):
+        layout, _ = _grouped(rows)
+        return [r.symbol for _, cards, _ in layout for r in cards]
     triggered = [r for r in rows if r.bucket == "TRIGGERED"][:TOP_TRIGGERED_WITH_CHARTS]
     forming = [r for r in rows if r.bucket == "FORMING"][:TOP_FORMING_WITH_CHARTS]
     return [r.symbol for r in triggered + forming]

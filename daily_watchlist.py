@@ -52,6 +52,7 @@ from email_report import send_email
 from universe import load_us_listed_universe
 import watchlist_charts
 import watchlist_email
+import watchlist_ranking
 
 
 # --------------------------------------------------------------------------- #
@@ -115,6 +116,12 @@ class WatchRow:
     risk_pct: Optional[float]
     rr: Optional[float]
     rank_score: float
+    # Filled by watchlist_ranking.rank_rows.
+    sector: str = ""
+    industry: str = ""
+    group: str = ""          # leading sector, "Theme: <industry>", or "" if outside
+    rs: Optional[int] = None  # relative strength 1-99 across the liquid universe
+    score: Optional[float] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -542,8 +549,26 @@ def build_watchlist(
         if row is not None:
             rows.append(row)
 
-    # TRIGGERED always sorts above FORMING; within a bucket, by rank score.
+    # Baseline order: TRIGGERED above FORMING; within a bucket, by rank score.
     rows.sort(key=lambda r: (r.bucket != "TRIGGERED", -r.rank_score))
+
+    # Leading groups and relative strength reorder the list. If any part of
+    # it fails (Yahoo down, say), the baseline order above still ships.
+    leadership = None
+    try:
+        print("Ranking by leading sectors, themes and relative strength...", flush=True)
+        reference = watchlist_ranking.download_reference()
+        liquid = [s for s, f in frames.items() if watchlist_ranking.is_liquid(f)]
+        industry_map = watchlist_ranking.load_industry_map(liquid)
+        leadership = watchlist_ranking.compute_leadership(frames, reference, industry_map)
+        rows = watchlist_ranking.rank_rows(rows, leadership, industry_map)
+        print(
+            f"Leading sectors: {', '.join(leadership.leading_sectors) or 'none'} | "
+            f"themes: {', '.join(leadership.leading_themes) or 'none'}",
+            flush=True,
+        )
+    except Exception as exc:
+        print(f"  ! ranking skipped, keeping baseline order: {exc}", flush=True)
 
     as_of = "unknown"
     if frames:
@@ -560,6 +585,7 @@ def build_watchlist(
         "forming_count": sum(1 for r in rows if r.bucket == "FORMING"),
         "runtime": f"{int(elapsed // 60)}m {int(elapsed % 60)}s",
         "funnel": funnel,
+        "leadership": leadership,
     }
     listed_frames = {r.symbol: frames[r.symbol] for r in rows if r.symbol in frames}
     return rows, stats, listed_frames
@@ -607,7 +633,9 @@ def main() -> int:
         if pdf is not None:
             attachments.append(str(pdf))
             print(f"Charts PDF saved: {pdf}", flush=True)
-        inline = [s for s in watchlist_email.emailed_chart_symbols(rows) if s in chart_paths]
+        inline = [
+            s for s in watchlist_email.emailed_chart_symbols(rows, stats) if s in chart_paths
+        ]
         inline_images = {watchlist_email.chart_cid(s): str(chart_paths[s]) for s in inline}
         html = watchlist_email.render_html(rows, stats, set(inline), rules_lines())
         preview = Path(args.output_dir) / f"watchlist_{stamp}.html"
