@@ -1,6 +1,9 @@
 symbol,sector,industry
+A,,
+AA,,
 AADX,Industrials,Aerospace & Defense
 AAL,Industrials,Airlines
+AAOI,,
 AAON,Industrials,Building Products & Equipment
 AAP,Consumer Cyclical,Auto Parts
 AAPL,Technology,Consumer Electronics
@@ -12,12 +15,15 @@ ABT,Healthcare,Medical Devices
 ACAD,Healthcare,Biotechnology
 ACB,Healthcare,Drug Manufacturers - Specialty & Generic
 ACCO,Industrials,Business Equipment & Supplies
+ACGL,,
 ACHC,Healthcare,Medical Care Facilities
 ACI,Consumer Defensive,Grocery Stores
 ACIW,Technology,Software - Infrastructure
 ACM,Industrials,Engineering & Construction
 ACMR,Technology,Semiconductor Equipment & Materials
 ACN,Technology,Information Technology Services
+ADAM,,
+ADBE,,
 ADC,Real Estate,REIT - Retail
 ADEA,Technology,Software - Application
 ADI,Technology,Semiconductors
@@ -32,13 +38,19 @@ AEE,Utilities,Utilities - Regulated Electric
 AEG,Financial Services,Insurance - Diversified
 AEHL,Industrials,Building Products & Equipment
 AEHR,Technology,Semiconductor Equipment & Materials
+AEM,,
+AEO,,
 AEP,Utilities,Utilities - Regulated Electric
 AER,Industrials,Rental & Leasing Services
+AES,,
 AESI,Energy,Oil & Gas Equipment & Services
 AEVA,Technology,Software - Infrastructure
 AFL,Financial Services,Insurance - Life
 AFRM,Financial Services,Credit Services
 AG,Basic Materials,Silver
+AGI,,
+AGIO,,
+AGLT,,
 AGNC,Real Estate,REIT - Mortgage
 AHCO,Healthcare,Medical Devices
 AHR,Real Estate,REIT - Healthcare Facilities
@@ -59,15 +71,22 @@ ALL,Financial Services,Insurance - Property & Casualty
 ALLE,Industrials,Security & Protection Services
 ALLY,Financial Services,Credit Services
 ALM,Basic Materials,Other Industrial Metals & Mining
+ALMS,,
+ALNY,,
 ALOY,Basic Materials,Other Industrial Metals & Mining
 AM,Energy,Oil & Gas Midstream
 AMAT,Technology,Semiconductor Equipment & Materials
+AMBA,,
 AMCR,Consumer Cyclical,Packaging & Containers
 AMD,Technology,Semiconductors
 AME,Industrials,Specialty Industrial Machinery
+AMGN,,
+AMH,,
 AMKR,Technology,Semiconductor Equipment & Materials
 AMLX,Healthcare,Drug Manufacturers - Specialty & Generic
+AMN,,
 AMPL,Technology,Software - Application
+AMPX,,
 AMRX,Healthcare,Drug Manufacturers - Specialty & Generic
 AMRZ,Basic Materials,Building Materials
 AMT,Real Estate,REIT - Specialty
@@ -78,6 +97,9 @@ ANF,Consumer Cyclical,Apparel Retail
 AON,Financial Services,Insurance Brokers
 AOS,Industrials,Specialty Industrial Machinery
 APA,Energy,Oil & Gas E&P
+APAM,,
+APD,,
+APG,,
 APH,Technology,Electronic Components
 APLD,Technology,Information Technology Services
 APLE,Real Estate,REIT - Hotel & Motel
@@ -91,6 +113,7 @@ AR,Energy,Oil & Gas E&P
 ARCO,Consumer Cyclical,Restaurants
 ARE,Real Estate,REIT - Office
 ARES,Financial Services,Asset Management
+ARHS,,
 ARIS,Basic Materials,Gold
 ARLO,Industrials,Building Products & Equipment
 ARMK,Industrials,Specialty Business Services
@@ -107,6 +130,8 @@ ASML,Technology,Semiconductor Equipment & Materials
 ASO,Consumer Cyclical,Specialty Retail
 ASPN,Basic Materials,Specialty Chemicals
 ASST,Financial Services,Asset Management
+ASTL,,
+ASTS,,
 ATEC,Healthcare,Medical Devices
 ATEN,Technology,Software - Infrastructure
 ATI,Industrials,Metal Fabrication
@@ -116,6 +141,7 @@ AUB,Financial Services,Banks - Regional
 AVAH,Healthcare,Medical Care Facilities
 AVAV,Industrials,Aerospace & Defense
 AVBP,Healthcare,Biotechnology
+AVEX,,
 AVGO,Technology,Semiconductors
 AVPT,Technology,Software - Infrastructure
 AVR,Healthcare,Medical Devices
@@ -125,6 +151,7 @@ AVTX,Healthcare,Biotechnology
 AWK,Utilities,Utilities - Regulated Water
 AXGN,Healthcare,Medical Devices
 AXON,Industrials,Aerospace & Defense
+AXP,,
 AXSM,Healthcare,Biotechnology
 AXTA,Basic Materials,Specialty Chemicals
 AXTI,Technology,Semiconductor Equipment & Materials
@@ -133,16 +160,23 @@ B,Basic Materials,Gold
 BA,Industrials,Aerospace & Defense
 BAC,Financial Services,Banks - Diversified
 BAH,Industrials,Consulting Services
+BALL,,
 BAM,Financial Services,Asset Management
+BANC,,
 BAX,Healthcare,Medical Instruments & Supplies
 BB,Technology,Software - Infrastructure
 BBIO,Healthcare,Biotechnology
+BBNX,,
+BBT,,
+BBVA,,
+BBWI,,
 BBY,Consumer Cyclical,Specialty Retail
 BCAX,Healthcare,Biotechnology
 BCE,Communication Services,Telecom Services
 BCRX,Healthcare,Drug Manufacturers - Specialty & Generic
 BCS,Financial Services,Banks - Diversified
 BDX,Healthcare,Medical Instruments & Supplies
+BE,,
 BEAM,Healthcare,Biotechnology
 BEN,Financial Services,Asset Management
 BEPC,Utilities,Utilities - Renewable
@@ -314,11 +348,14 @@ CPNG,Consumer Cyclical,Internet Retail
 CPRI,Consumer Cyclical,Luxury Goods
 CPRT,Industrials,Specialty Business Services
 CRBG,Financial Services,Asset Management
+CRC,,
 CRCL,Financial Services,Capital Markets
 CRCT,Technology,Computer Hardware
 CRDO,Technology,Semiconductors
+CRGY,,
 CRH,Basic Materials,Building Materials
 CRI,Consumer Cyclical,Apparel Retail
+CRK,,
 CRL,Healthcare,Diagnostics & Research
 CRM,Technology,Software - Application
 CRMD,Healthcare,Biotechnology
@@ -450,6 +487,7 @@ EOG,Energy,Oil & Gas E&P
 EOLS,Healthcare,Drug Manufacturers - Specialty & Generic
 EPAM,Technology,Information Technology Services
 EPD,Energy,Oil & Gas Midstream
+EPR,,
 EPRT,Real Estate,REIT - Retail
 EQH,Financial Services,Asset Management
 EQNR,Energy,Oil & Gas Integrated
@@ -588,6 +626,7 @@ GLXY,Financial Services,Capital Markets
 GM,Consumer Cyclical,Auto Manufacturers
 GME,Consumer Cyclical,Specialty Retail
 GMED,Healthcare,Medical Devices
+GMRS,,
 GNL,Real Estate,REIT - Diversified
 GNRC,Industrials,Specialty Industrial Machinery
 GNTX,Consumer Cyclical,Auto Parts
@@ -668,6 +707,7 @@ HUBS,Technology,Software - Application
 HUM,Healthcare,Healthcare Plans
 HUN,Basic Materials,Chemicals
 HUT,Financial Services,Capital Markets
+HWC,,
 HWM,Industrials,Aerospace & Defense
 HXL,Industrials,Aerospace & Defense
 HYMC,Basic Materials,Gold
@@ -1300,6 +1340,7 @@ TGTX,Healthcare,Biotechnology
 TH,Industrials,Specialty Business Services
 THRM,Consumer Cyclical,Auto Parts
 TIC,Industrials,Specialty Business Services
+TIGO,,
 TJX,Consumer Cyclical,Apparel Retail
 TKO,Communication Services,Entertainment
 TLK,Communication Services,Telecom Services

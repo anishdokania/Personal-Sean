@@ -72,32 +72,41 @@ def load_bars(name: str, symbols: list[str], start: str, end: str) -> dict[str, 
 # --------------------------------------------------------------------------- #
 # Signals
 # --------------------------------------------------------------------------- #
-def _candidate_bars(df: pd.DataFrame) -> np.ndarray:
-    """Cheap, loose prefilter; every survivor is re-checked by the live rules."""
-    c, h, l, v = df["Close"], df["High"], df["Low"], df["Volume"]
+def _candidate_bars(df: pd.DataFrame, side: str = "call") -> np.ndarray:
+    """Cheap, loose prefilter; every survivor is re-checked by the live rules.
+
+    Liquidity is read on the real chart, the pattern on the mirrored one for puts.
+    """
+    real_c, v = df["Close"], df["Volume"]
     vol20 = v.rolling(20).mean()
+    liquid = ((real_c > dw.MIN_PRICE) & (vol20 >= dw.MIN_AVG_VOLUME_20D)
+              & (vol20 * real_c >= dw.MIN_AVG_DOLLAR_VOLUME_20D))
+    if side == "put":
+        df = dw.mirror_frame(df)
+    c, h, l = df["Close"], df["High"], df["Low"]
     adrp = ((h / l.replace(0, np.nan)).rolling(20).mean() - 1) * 100
     ema8 = c.ewm(span=8, adjust=False).mean()
     ema21 = c.ewm(span=21, adjust=False).mean()
     ema50 = c.ewm(span=50, adjust=False).mean()
     rng = (h - l).replace(0, np.nan)
     undercut = (l < l.shift(1)) | (l < ema8 * 1.01) | (l < ema21 * 1.01)
-    mask = ((c > dw.MIN_PRICE) & (vol20 >= dw.MIN_AVG_VOLUME_20D)
-            & (vol20 * c >= dw.MIN_AVG_DOLLAR_VOLUME_20D) & (adrp >= dw.MIN_ADR_PCT * 0.95)
+    mask = (liquid & (adrp >= dw.MIN_ADR_PCT * 0.95)
             & (c > ema50 * 0.98) & ((c - l) / rng >= 0.38) & undercut)
     return np.flatnonzero(mask.to_numpy())
 
 
-def triggered_signals(frames: dict[str, pd.DataFrame], first_day: pd.Timestamp) -> dict:
+def triggered_signals(frames: dict[str, pd.DataFrame], first_day: pd.Timestamp,
+                      side: str = "call") -> dict:
     """date -> list[WatchRow] of TRIGGERED names on that close."""
+    rule = dw.evaluate_put if side == "put" else dw.evaluate
     config = BacktestConfig(adr_lookback=dw.ADR_LOOKBACK, min_adr_pct=dw.MIN_ADR_PCT)
     by_day: dict[pd.Timestamp, list] = {}
     for n, (symbol, df) in enumerate(frames.items(), 1):
-        for i in _candidate_bars(df):
+        for i in _candidate_bars(df, side):
             day = df.index[i]
             if day < first_day or i + 1 < dw.MIN_BARS_REQUIRED:
                 continue
-            row = dw.evaluate(symbol, df.iloc[max(0, i + 1 - WINDOW_BARS) : i + 1], config)
+            row = rule(symbol, df.iloc[max(0, i + 1 - WINDOW_BARS) : i + 1], config)
             if row is not None and row.bucket == "TRIGGERED":
                 by_day.setdefault(day, []).append(row)
         if n % 250 == 0:
@@ -109,18 +118,29 @@ def triggered_signals(frames: dict[str, pd.DataFrame], first_day: pd.Timestamp) 
 # Point-in-time leadership
 # --------------------------------------------------------------------------- #
 class LeadershipReplay:
-    def __init__(self, frames, reference, industry_map):
-        self.imap = industry_map
+    def __init__(self, frames, reference, industry_map, side: str = "call"):
+        self.imap, self.side = industry_map, side
+        sign = -1 if side == "put" else 1  # puts rank the weakest first
         close = pd.DataFrame({s: f["Close"] for s, f in frames.items()})
         volume = pd.DataFrame({s: f["Volume"] for s, f in frames.items()})
         self.liquid = ((close > wr.LIQUID_MIN_PRICE)
                        & (volume.rolling(20).mean() > wr.LIQUID_MIN_AVG_VOLUME)
                        & (close.notna().cumsum() > wr.WINDOWS["3M"]))
-        self.stock_ret = {w: 100 * (close / close.shift(b) - 1) for w, b in wr.WINDOWS.items()}
+        self.stock_ret = {w: sign * 100 * (close / close.shift(b) - 1)
+                          for w, b in wr.WINDOWS.items()}
         etf = pd.DataFrame({sec: reference[t]["Close"] for sec, t in wr.SECTOR_ETFS.items()
                             if t in reference})
-        self.etf_ret = {w: 100 * (etf / etf.shift(b) - 1) for w, b in wr.WINDOWS.items()}
-        self.regime = self._regime_series({k: reference[k]["Close"] for k in ("SPY", "QQQ")})
+        self.etf_ret = {w: sign * 100 * (etf / etf.shift(b) - 1) for w, b in wr.WINDOWS.items()}
+        index = {k: reference[k]["Close"] for k in ("SPY", "QQQ")}
+        self.call_regime = self._regime_series(index)
+        self.put_regime = self._regime_series({k: 1.0 / c for k, c in index.items()})
+        self.regime = self.put_regime if side == "put" else self.call_regime
+
+    def day_side(self, day: pd.Timestamp) -> str:
+        """What the live trade_side() would have said that day."""
+        if int(self.call_regime.get(day, 0)) >= 1:
+            return "call"
+        return "put" if int(self.put_regime.get(day, 0)) >= 1 else "both"
 
     @staticmethod
     def _regime_series(closes: dict[str, pd.Series]) -> pd.Series:
@@ -142,18 +162,28 @@ class LeadershipReplay:
             pd.DataFrame({w: r.loc[day] for w, r in self.etf_ret.items()}).dropna(),
             wr.LEADING_SECTORS_MAX)
         leading = list(sectors.index[sectors["leading"]])
-        themes = wr.industry_leadership(returns, self.imap, exclude_sectors=leading)
+        themes = (wr.industry_leadership(returns, self.imap, exclude_sectors=leading)
+                  if wr.USE_THEMES else pd.DataFrame())
         level = int(self.regime.get(day, 0))
         label, advice = wr.REGIMES[level]
+        # returns are already sign-flipped for puts, so rank them as calls.
         return wr.Leadership(sectors=sectors, themes=themes, rs=wr.rs_ratings(returns),
-                             regime=wr.Regime(level, label, advice, {}))
+                             regime=wr.Regime(level, label, advice, {}), side=self.side)
 
 
 # --------------------------------------------------------------------------- #
 # Trade simulation (same fill/exit rules as backtest.engine)
 # --------------------------------------------------------------------------- #
+def _negate(df: pd.DataFrame) -> pd.DataFrame:
+    """A short on the real chart is a long on the negated one (highs and lows swap)."""
+    return pd.DataFrame({"Open": -df["Open"], "High": -df["Low"], "Low": -df["High"],
+                         "Close": -df["Close"]}, index=df.index)
+
+
 def simulate(df: pd.DataFrame, day: pd.Timestamp, entry: float, stop: float,
-             target: float, pessimistic: bool) -> Optional[dict]:
+             target: float, pessimistic: bool, side: str = "call") -> Optional[dict]:
+    if side == "put":
+        df, entry, stop, target = _negate(df), -entry, -stop, -target
     i0 = df.index.get_loc(day)
     bars = df.iloc[i0 + 1 :]
     risk_ref = entry - stop
@@ -178,7 +208,7 @@ def simulate(df: pd.DataFrame, day: pd.Timestamp, entry: float, stop: float,
 
 
 def _trade(entry, exit_px, risk, entry_day, exit_day, reason) -> dict:
-    exit_px *= 1 - SLIPPAGE_BPS / 10_000
+    exit_px -= abs(exit_px) * SLIPPAGE_BPS / 10_000  # always against us, long or short
     return {"filled": True, "entry_day": entry_day, "exit_day": exit_day, "reason": reason,
             "R": (exit_px - entry) / risk}  # in units of the planned risk
 
@@ -188,6 +218,7 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--start", default="2021-06-01", help="data start (first ~120 bars warm up)")
     p.add_argument("--end", default=pd.Timestamp.today().strftime("%Y-%m-%d"))
+    p.add_argument("--side", choices=["call", "put"], default="call")
     args = p.parse_args()
 
     with wr.INDUSTRY_CACHE.open() as fh:
@@ -202,8 +233,8 @@ def main() -> None:
     first_day = calendar[130]  # 63-bar returns + EMA50 warm-up
     print(f"bars for {len(frames)} symbols; test {first_day.date()} -> {calendar[-1].date()}")
 
-    signals = triggered_signals(frames, first_day)
-    replay = LeadershipReplay(frames, reference, industry_map)
+    signals = triggered_signals(frames, first_day, args.side)
+    replay = LeadershipReplay(frames, reference, industry_map, args.side)
 
     records = []
     for day in sorted(signals):
@@ -214,8 +245,8 @@ def main() -> None:
         ranked = wr.rank_rows(rows, lead, industry_map)
         for new_i, r in enumerate(ranked, 1):
             df = frames[r.symbol]
-            pess = simulate(df, day, r.entry, r.stop, r.target, pessimistic=True)
-            opt = simulate(df, day, r.entry, r.stop, r.target, pessimistic=False)
+            pess = simulate(df, day, r.entry, r.stop, r.target, True, args.side)
+            opt = simulate(df, day, r.entry, r.stop, r.target, False, args.side)
             if pess is None or opt is None:
                 continue
             kind = ("sector" if r.group_order[0] == 0 else "theme" if r.group_order[0] == 1
@@ -225,14 +256,15 @@ def main() -> None:
                 "group": r.group, "kind": kind, "sector": r.sector, "industry": r.industry,
                 "rs": r.rs, "score": r.score, "rr": r.rr, "risk_pct": r.risk_pct,
                 "adr_pct": r.adr_pct, "quality": wr.setup_quality(r),
-                "regime": lead.regime.level, "n_today": len(rows),
+                "regime": lead.regime.level, "n_today": len(rows), "side": args.side,
+                "day_side": replay.day_side(day),
                 "old_rank": old_rank[r.symbol], "new_rank": new_i,
                 "filled": pess["filled"], "reason": pess.get("reason"),
                 "R_pess": pess.get("R"), "R_opt": opt.get("R"),
             })
     out = pd.DataFrame(records)
     OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / f"signals_{args.start}_{args.end}.csv"
+    path = OUT / f"signals_{args.side}_{args.start}_{args.end}.csv"
     out.to_csv(path, index=False)
     print(f"{len(out)} triggered plans, {int(out['filled'].sum())} filled -> {path}")
 

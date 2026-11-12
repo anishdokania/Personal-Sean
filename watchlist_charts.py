@@ -49,6 +49,10 @@ SETUP_LABELS = {
     "unr_ema8": "Undercut & reclaim of the 8 EMA",
     "unr_ema21": "Undercut & reclaim of the 21 EMA",
     "ema8_pullback": "Pulling into the 8 EMA",
+    "onr_pdh": "PUT: overshoot & reject of the prior-day high",
+    "onr_ema8": "PUT: overshoot & reject of the 8 EMA",
+    "onr_ema21": "PUT: overshoot & reject of the 21 EMA",
+    "ema8_rally": "PUT: rallying into the 8 EMA",
 }
 
 
@@ -121,6 +125,8 @@ def render_chart(symbol: str, df: pd.DataFrame, row, path: str | Path) -> Path:
 
     if row.bucket == "TRIGGERED" and row.entry and row.stop and row.target:
         entry, stop, target = row.entry, row.stop, row.target
+        put = getattr(row, "side", "call") == "put"
+        # Negative heights are fine: for a put the risk box sits above the entry.
         ax.add_patch(Rectangle((box_x0, stop), box_w, entry - stop,
                                facecolor=STOP_COLOR, alpha=0.18, zorder=1))
         ax.add_patch(Rectangle((box_x0, entry), box_w, target - entry,
@@ -129,19 +135,23 @@ def render_chart(symbol: str, df: pd.DataFrame, row, path: str | Path) -> Path:
                                     (target, TARGET_COLOR, "--")):
             ax.hlines(level, last - 8, box_x0 + box_w, colors=color,
                       linestyles=style, linewidth=1.2, zorder=5)
-        y_lo, y_hi = min(y_lo, stop), max(y_hi, target)
+        y_lo, y_hi = min(y_lo, stop, target), max(y_hi, stop, target)
         _place_labels(ax, box_x0 + box_w, box_x0 + box_w + 1.5, [
-            (target, f"Target {target:.2f}  +{100 * (target / entry - 1):.1f}%", TARGET_COLOR),
+            (target, f"Target {target:.2f}  {100 * (target / entry - 1):+.1f}%", TARGET_COLOR),
             (entry, f"Entry {entry:.2f}  (limit)", ENTRY_COLOR),
-            (stop, f"Stop {stop:.2f}  -{100 * (1 - stop / entry):.1f}%", STOP_COLOR),
+            (stop, f"Stop {stop:.2f}  {100 * (stop / entry - 1):+.1f}%", STOP_COLOR),
         ], y_lo, y_hi)
-        ax.annotate("UnR bar", xy=(last, lows[-1]),
-                    xytext=(last - 12, lows[-1] - 0.12 * (y_hi - y_lo)),
+        tip = highs[-1] if put else lows[-1]
+        nudge = (0.12 if put else -0.12) * (y_hi - y_lo)
+        ax.annotate("OnR bar" if put else "UnR bar", xy=(last, tip),
+                    xytext=(last - 12, tip + nudge),
                     fontsize=10, fontweight="bold", color=ENTRY_COLOR,
                     arrowprops=dict(arrowstyle="->", color=ENTRY_COLOR, lw=1.2), zorder=6)
     else:
         ema8_now = float(emas[8].iloc[-1])
-        watch = ((ema8_now, "8 EMA"), (float(lows[-1]), "Today's low"))
+        put = getattr(row, "side", "call") == "put"
+        watch = ((ema8_now, "8 EMA"),
+                 (float(highs[-1]), "Today's high") if put else (float(lows[-1]), "Today's low"))
         for level, _ in watch:
             ax.hlines(level, last - 8, box_x0 + box_w, colors=WATCH_COLOR, linestyles="--",
                       linewidth=1.1, zorder=5)
@@ -149,8 +159,11 @@ def render_chart(symbol: str, df: pd.DataFrame, row, path: str | Path) -> Path:
         _place_labels(ax, box_x0 + box_w, box_x0 + box_w + 1.5,
                       [(level, f"{name} {level:.2f}", WATCH_COLOR) for level, name in watch],
                       y_lo, y_hi)
-        ax.text(box_x0 + 1.5, y_hi, "Trigger: undercut one of these,\nthen close back above it",
-                fontsize=9.5, color=WATCH_COLOR, va="top", ha="left", zorder=6)
+        ax.text(box_x0 + 1.5, y_lo if put else y_hi,
+                ("Trigger: push above one of these,\nthen close back below it" if put else
+                 "Trigger: undercut one of these,\nthen close back above it"),
+                fontsize=9.5, color=WATCH_COLOR, va="bottom" if put else "top", ha="left",
+                zorder=6)
 
     pad = 0.06 * (y_hi - y_lo)
     ax.set_ylim(y_lo - pad, y_hi + pad)

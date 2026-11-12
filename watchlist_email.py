@@ -59,6 +59,10 @@ def _level_cell(label: str, value: str, color: str) -> str:
     )
 
 
+def _is_put(row) -> bool:
+    return getattr(row, "side", "call") == "put"
+
+
 def _card(row, rank: int, has_chart: bool) -> str:
     head = (
         f'<div style="font-size:18px;font-weight:700;color:{INK}">'
@@ -66,7 +70,7 @@ def _card(row, rank: int, has_chart: bool) -> str:
         f'<span style="font-size:13px;font-weight:400;color:{MUTED}">'
         f'{escape(setup_label(row.setup))}</span></div>'
         f'<div style="font-size:12px;color:{MUTED};margin:2px 0 8px">'
-        + (f"RS {row.rs} · " if getattr(row, "rs", None) else "")
+        + (f"{'RW' if _is_put(row) else 'RS'} {row.rs} · " if getattr(row, "rs", None) else "")
         + f'Close {_money(row.close)} · ADR {_pct(row.adr_pct, signed=False)} · '
         + (f"R:R {row.rr:.1f} · " if row.rr is not None else "")
         + f'1W {_pct(row.perf_1w)} · 1M {_pct(row.perf_1m)}'
@@ -79,15 +83,19 @@ def _card(row, rank: int, has_chart: bool) -> str:
             '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
             f'style="border-collapse:collapse;background:#f9fafb;margin-bottom:8px"><tr>'
             + _level_cell("ENTRY (limit)", _money(row.entry), ENTRY)
-            + _level_cell(f"STOP −{_pct(row.risk_pct, signed=False)}", _money(row.stop), STOP)
+            + _level_cell(f"STOP {'+' if _is_put(row) else '−'}{_pct(row.risk_pct, signed=False)}",
+                          _money(row.stop), STOP)
             + _level_cell(f"TARGET {_pct(target_pct)}", _money(row.target), TARGET)
             + "</tr></table>"
         )
     else:
         levels = (
             f'<div style="font-size:13px;color:{WATCH};margin-bottom:8px">'
-            f'{row.dist_ema8_adr:+.2f} ADR from the 8 EMA. Trigger: undercut the 8 EMA or '
-            f"today's low, then close back above it.</div>"
+            f'{row.dist_ema8_adr:+.2f} ADR from the 8 EMA. '
+            + ("Trigger: push above the 8 EMA or today's high, then close back below it."
+               if _is_put(row) else
+               "Trigger: undercut the 8 EMA or today's low, then close back above it.")
+            + "</div>"
         )
     chart = (
         f'<img src="cid:{chart_cid(row.symbol)}" alt="{escape(row.symbol)} chart" width="600" '
@@ -114,6 +122,10 @@ SHORT_SETUP = {
     "unr_ema8": "UnR 8EMA",
     "unr_ema21": "UnR 21EMA",
     "ema8_pullback": "Forming",
+    "onr_pdh": "OnR PDH",
+    "onr_ema8": "OnR 8EMA",
+    "onr_ema21": "OnR 21EMA",
+    "ema8_rally": "Forming",
 }
 
 
@@ -161,8 +173,8 @@ FUNNEL_LABELS = [
     ("fail_volume", "share volume too low"),
     ("fail_dollar_volume", "dollar volume too low"),
     ("fail_adr", "ADR% too low"),
-    ("fail_trend", "not in an uptrend"),
-    ("fail_extended", "extended above the 8 EMA"),
+    ("fail_trend", "trend on the wrong side"),
+    ("fail_extended", "extended from the 8 EMA"),
     ("fail_not_near_ema8", "healthy but not near the 8 EMA"),
     ("triggered", "→ triggered"),
     ("forming", "→ forming"),
@@ -184,7 +196,8 @@ def _footer(stats: dict[str, Any], rules: list[str]) -> str:
     )
 
 
-def _grouped(rows: list) -> tuple[list[tuple[str, list, list, int]], list]:
+def _grouped(rows: list, budget: int = MAX_INLINE_CHARTS
+             ) -> tuple[list[tuple[str, list, list, int]], list]:
     """Split ranked rows into (group, card_rows, table_rows, hidden) plus the outside list.
 
     Rows arrive ordered by watchlist_ranking.rank_rows, so groups come out
@@ -198,7 +211,6 @@ def _grouped(rows: list) -> tuple[list[tuple[str, list, list, int]], list]:
             groups.setdefault(row.group, []).append(row)
         else:
             outside.append(row)
-    budget = MAX_INLINE_CHARTS
     layout = []
     for name, members in groups.items():
         shown = members[:MAX_NAMES_PER_GROUP]
@@ -240,7 +252,9 @@ def _leaders_table(leadership, layout) -> str:
             ])
     if not body:
         return ""
-    return _compact_table(["Leading group", "Top 5 in", "1W", "1M", "3M", "Names"], body)
+    put = getattr(leadership, "side", "call") == "put"
+    return _compact_table(["Lagging sector" if put else "Leading group",
+                           "Bottom 5 in" if put else "Top 5 in", "1W", "1M", "3M", "Names"], body)
 
 
 def _group_header(name: str, leadership) -> str:
@@ -249,7 +263,8 @@ def _group_header(name: str, leadership) -> str:
     sub = ""
     if table is not None and key in table.index:
         r = table.loc[key]
-        sub = (f"Top 5 in {int(r['top5_count'])}/3 windows · 1W {_pct(r['1W'])} · "
+        five = "Bottom 5" if getattr(leadership, "side", "call") == "put" else "Top 5"
+        sub = (f"{five} in {int(r['top5_count'])}/3 windows · 1W {_pct(r['1W'])} · "
                f"1M {_pct(r['1M'])} · 3M {_pct(r['3M'])}")
         if "members" in r and not pd.isna(r.get("members")):
             sub += f" · {int(r['members'])} liquid members"
@@ -273,18 +288,38 @@ def _outside_table(rows: list) -> str:
     )
 
 
-def _render_grouped(rows: list, stats: dict[str, Any], charted: set[str]) -> list[str]:
-    leadership = stats["leadership"]
-    layout, outside = _grouped(rows)
+SIDE_BANNER = {
+    "call": ("CALLS", "SPY and QQQ are above the 50 EMA: calls in the strongest sectors."),
+    "put": ("PUTS", "SPY and QQQ are below the 50 EMA: puts in the weakest sectors."),
+    "both": ("CALLS + PUTS", "SPY and QQQ split on the 50 EMA: both sides, small size."),
+}
+
+
+def _side_sections(rows: list, stats: dict[str, Any]) -> list[tuple[str, list, Any, int]]:
+    """(side, rows, leadership, chart budget) for each side shown today."""
+    sides = stats.get("sides") or [(getattr(rows[0], "side", "call") if rows else "call",
+                                    stats.get("leadership"))]
+    budget = MAX_INLINE_CHARTS // max(1, len(sides))
+    return [(side, [r for r in rows if getattr(r, "side", "call") == side], lead, budget)
+            for side, lead in sides]
+
+
+def _render_grouped(rows: list, leadership, charted: set[str], budget: int,
+                    side: str = "call") -> list[str]:
+    layout, outside = _grouped(rows, budget)
+    put = side == "put"
+    word = "Lagging" if put else "Leading"
     parts = [_regime_banner(leadership.regime)]
     parts.append(_section(
-        "Leading groups today",
-        "SPDR sectors in the top 5 over 1W / 1M / 3M, overlapping in at least 2 windows "
-        "(max 3). Grouped for reading: the backtest found no edge from sector or RS alone.",
+        f"{'PUTS' if put else 'CALLS'}: {word.lower()} sectors today",
+        f"SPDR sectors in the {'bottom' if put else 'top'} 5 over 1W / 1M / 3M, overlapping "
+        "in at least 2 windows (max 3). Grouped for reading: the backtest found no edge from "
+        "sector or RS alone.",
     ))
     parts.append(_leaders_table(leadership, layout))
     if not layout:
-        parts.append(f'<p style="font-size:14px">No names in the leading groups today.</p>')
+        parts.append(f'<p style="font-size:14px">No names in the {word.lower()} sectors '
+                     "today.</p>")
     for name, cards, rest, hidden in layout:
         parts.append(_group_header(name, leadership))
         parts += [_card(r, i, r.symbol in charted) for i, r in enumerate(cards, 1)]
@@ -297,7 +332,7 @@ def _render_grouped(rows: list, stats: dict[str, Any], charted: set[str]) -> lis
             )
     if outside:
         parts.append(_section(
-            f"Outside leading groups ({len(outside)})",
+            f"{'PUTS' if put else 'CALLS'}: outside the {word.lower()} sectors ({len(outside)})",
             "Shown while the sector filter is being validated. Charts are in the PDF.",
         ))
         parts.append(_outside_table(outside))
@@ -309,7 +344,11 @@ def render_html(
 ) -> str:
     """The full email body. ``charted`` is the set of symbols with a chart image."""
     if _is_grouped(rows, stats):
-        return _wrap(rows, stats, _render_grouped(rows, stats, charted), rules)
+        parts = []
+        for side, side_rows, lead, budget in _side_sections(rows, stats):
+            if lead is not None:
+                parts += _render_grouped(side_rows, lead, charted, budget, side)
+        return _wrap(rows, stats, parts, rules)
     triggered = [r for r in rows if r.bucket == "TRIGGERED"]
     forming = [r for r in rows if r.bucket == "FORMING"]
     top_t = triggered[:TOP_TRIGGERED_WITH_CHARTS]
@@ -359,6 +398,11 @@ def _wrap(rows: list, stats: dict[str, Any], body: list[str], rules: list[str]) 
         f'<td style="background:{WATCH};color:#fff;padding:6px 12px;font-size:14px;'
         f'font-weight:700">{forming} forming</td></tr></table>',
     ]
+    if stats.get("side"):
+        chip, text = SIDE_BANNER.get(stats["side"], SIDE_BANNER["call"])
+        head.append(
+            f'<div style="margin-top:10px;font-size:14px;color:{INK}"><b>Today: {chip}.</b> '
+            f"{escape(text)}</div>")
     if not rows:
         head.append('<p style="font-size:14px">Nothing passed the rules today.</p>')
     return "".join(head + body + [_footer(stats, rules), "</div>"])
@@ -367,8 +411,12 @@ def _wrap(rows: list, stats: dict[str, Any], body: list[str], rules: list[str]) 
 def emailed_chart_symbols(rows: list, stats: Optional[dict[str, Any]] = None) -> list[str]:
     """Symbols whose charts go inline in the body (the rest live in the PDF)."""
     if stats is not None and _is_grouped(rows, stats):
-        layout, _ = _grouped(rows)
-        return [r.symbol for _, cards, _, _ in layout for r in cards]
+        out = []
+        for _, side_rows, lead, budget in _side_sections(rows, stats):
+            if lead is not None:
+                layout, _ = _grouped(side_rows, budget)
+                out += [r.symbol for _, cards, _, _ in layout for r in cards]
+        return out
     triggered = [r for r in rows if r.bucket == "TRIGGERED"][:TOP_TRIGGERED_WITH_CHARTS]
     forming = [r for r in rows if r.bucket == "FORMING"][:TOP_FORMING_WITH_CHARTS]
     return [r.symbol for r in triggered + forming]

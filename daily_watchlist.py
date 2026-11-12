@@ -123,8 +123,9 @@ class WatchRow:
     sector: str = ""
     industry: str = ""
     group: str = ""          # leading sector, "Theme: <industry>", or "" if outside
-    rs: Optional[int] = None  # relative strength 1-99 across the liquid universe
+    rs: Optional[int] = None  # relative strength 1-99 (weakness for puts)
     score: Optional[float] = None
+    side: str = "call"       # "call" (long, leading sectors) | "put" (short, lagging sectors)
 
 
 # --------------------------------------------------------------------------- #
@@ -362,6 +363,66 @@ def evaluate(
 
 
 # --------------------------------------------------------------------------- #
+# The put side: the same rules on the mirrored chart
+# --------------------------------------------------------------------------- #
+PUT_SETUPS = {"unr_pdl": "onr_pdh", "unr_ema8": "onr_ema8", "unr_ema21": "onr_ema21",
+              "ema8_pullback": "ema8_rally"}
+
+
+def mirror_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Flip the chart upside down: price -> k / price, highs and lows swap.
+
+    A downtrend becomes an uptrend, a rally into the 8 EMA becomes a pullback,
+    an overshoot-and-reject of the prior high becomes an undercut-and-reclaim of
+    the prior low. k = last close squared, so the last close, dollar volume and
+    ADR% (high/low ratios) are exactly unchanged.
+    """
+    k = float(df["Close"].iloc[-1]) ** 2
+    out = pd.DataFrame(index=df.index)
+    out["Open"] = k / df["Open"]
+    out["High"] = k / df["Low"]
+    out["Low"] = k / df["High"]
+    out["Close"] = k / df["Close"]
+    out["Volume"] = df["Volume"]
+    return out
+
+
+def evaluate_put(
+    symbol: str,
+    df: pd.DataFrame,
+    config: BacktestConfig,
+    funnel: Optional[dict[str, int]] = None,
+) -> Optional[WatchRow]:
+    """The call rules, run on the mirrored chart, with the levels mapped back.
+
+    Entry is where the bounce is sold (a put bought on the rally back to the
+    rejected level), the stop sits above the overshoot high, the target at the
+    nearest swing low below.
+    """
+    if df is None or len(df) < MIN_BARS_REQUIRED:
+        return evaluate(symbol, df, config, funnel=funnel)
+    row = evaluate(symbol, mirror_frame(df), config, funnel=funnel)
+    if row is None:
+        return None
+    k = float(df["Close"].iloc[-1]) ** 2
+    back = lambda v: round(k / v, 2) if v else None  # noqa: E731
+    closes = df["Close"]
+    adr = adr_abs(df, ADR_LOOKBACK)
+    row.side = "put"
+    row.setup = PUT_SETUPS.get(row.setup, row.setup)
+    row.entry, row.stop, row.target = back(row.entry), back(row.stop), back(row.target)
+    if row.entry and row.stop and row.target:
+        row.risk_pct = round(100.0 * (row.stop - row.entry) / row.entry, 1)
+        row.rr = round((row.entry - row.target) / (row.stop - row.entry), 1)
+    row.dist_ema8_adr = round(
+        (float(closes.iloc[-1]) - float(_ema(closes, TREND_EMA_FAST).iloc[-1])) / adr, 2)
+    for attr, bars in (("perf_1w", 5), ("perf_1m", 21), ("perf_3m", 63)):
+        value = _pct_change_over_bars(closes, bars)
+        setattr(row, attr, round(value, 1) if value is not None else None)
+    return row
+
+
+# --------------------------------------------------------------------------- #
 # Output
 # --------------------------------------------------------------------------- #
 def _fmt(value: Optional[float], suffix: str = "") -> str:
@@ -392,7 +453,19 @@ def rules_lines() -> list[str]:
         f"{MIN_STOP_ADR} ADR below the entry",
         f"FORMING: within {FORMING_MAX_ADR_ABOVE_EMA8} ADR above to "
         f"{FORMING_MAX_ADR_BELOW_EMA8} ADR below the {TREND_EMA_FAST} EMA",
+        "Side: calls when SPY and QQQ are both above the 50 EMA, puts when both are below, "
+        "both (small size) when they split",
+        "PUTS are the exact mirror: below the 50 EMA with the 21 falling; TRIGGERED = the bar "
+        "overshot the prior high / 8 EMA / 21 EMA and closed back below it; stop above the "
+        "overshoot high, target the nearest swing low; sectors and RS ranked weakest first",
     ]
+
+
+SIDE_TEXT = {
+    "call": "calls (SPY and QQQ above the 50 EMA): strongest sectors",
+    "put": "puts (SPY and QQQ below the 50 EMA): weakest sectors",
+    "both": "both (SPY and QQQ split on the 50 EMA): small size each way",
+}
 
 
 def render_markdown(rows: list[WatchRow], stats: dict[str, Any]) -> str:
@@ -411,6 +484,7 @@ def render_markdown(rows: list[WatchRow], stats: dict[str, Any]) -> str:
         f"- Symbols with usable data: {stats.get('with_data')}",
         f"- Passed all rules: {stats.get('candidates')}",
         f"- Triggered: {stats.get('triggered_count')} | Forming: {stats.get('forming_count')}",
+        f"- Market side: {SIDE_TEXT.get(stats.get('side', 'call'), 'calls')}",
         f"- Runtime: {stats.get('runtime')}",
         "",
     ]
@@ -460,6 +534,7 @@ def render_markdown(rows: list[WatchRow], stats: dict[str, Any]) -> str:
                 triggered,
                 [
                     ("Symbol", lambda r: r.symbol),
+                    ("Side", lambda r: r.side.upper()),
                     ("Setup", lambda r: r.setup),
                     ("Close", lambda r: r.close),
                     ("Entry", lambda r: _fmt(r.entry)),
@@ -482,6 +557,7 @@ def render_markdown(rows: list[WatchRow], stats: dict[str, Any]) -> str:
                 forming,
                 [
                     ("Symbol", lambda r: r.symbol),
+                    ("Side", lambda r: r.side.upper()),
                     ("Close", lambda r: r.close),
                     ("From 8EMA", lambda r: f"{r.dist_ema8_adr} ADR"),
                     ("ADR%", lambda r: f"{r.adr_pct}%"),
@@ -542,39 +618,60 @@ def build_watchlist(
     frames = download_history(symbols, history_days=history_days)
     print(f"Symbols with usable data: {len(frames)}", flush=True)
 
+    # Which side to trade comes from SPY / QQQ. Without them, calls only, as before.
+    reference: dict[str, pd.DataFrame] = {}
+    side = "call"
+    try:
+        reference = watchlist_ranking.download_reference()
+        side = watchlist_ranking.trade_side({k: reference.get(k) for k in ("SPY", "QQQ")})
+    except Exception as exc:
+        print(f"  ! market data unavailable, calls only: {exc}", flush=True)
+    sides = ["call", "put"] if side == "both" else [side]
+    print(f"Market side: {side}", flush=True)
+
     print("Applying rules...", flush=True)
     config = BacktestConfig(adr_lookback=ADR_LOOKBACK, min_adr_pct=MIN_ADR_PCT)
     rows: list[WatchRow] = []
-    funnel: dict[str, int] = {}
-    for symbol, frame in frames.items():
+    funnels: dict[str, dict[str, int]] = {}
+    side_leadership: list[tuple[str, Any]] = []
+    industry_map: Optional[dict[str, tuple[str, str]]] = None
+    for this_side in sides:
+        rule = evaluate_put if this_side == "put" else evaluate
+        funnel = funnels.setdefault(this_side, {})
+        side_rows: list[WatchRow] = []
+        for symbol, frame in frames.items():
+            try:
+                row = rule(symbol, frame, config, funnel=funnel)
+            except Exception as exc:
+                print(f"  ! {symbol} skipped: {exc}", flush=True)
+                continue
+            if row is not None:
+                side_rows.append(row)
+
+        # Baseline order: TRIGGERED above FORMING; within a bucket, by rank score.
+        side_rows.sort(key=lambda r: (r.bucket != "TRIGGERED", -r.rank_score))
+
+        # Leading (calls) or lagging (puts) sectors and RS reorder the list. If
+        # any part of it fails (Yahoo down, say), the baseline order still ships.
+        leadership = None
         try:
-            row = evaluate(symbol, frame, config, funnel=funnel)
+            if not reference:
+                raise RuntimeError("no sector ETF data")
+            if industry_map is None:
+                liquid = [s for s, f in frames.items() if watchlist_ranking.is_liquid(f)]
+                industry_map = watchlist_ranking.load_industry_map(liquid)
+            leadership = watchlist_ranking.compute_leadership(
+                frames, reference, industry_map, side=this_side)
+            side_rows = watchlist_ranking.rank_rows(side_rows, leadership, industry_map)
+            word = "Lagging" if this_side == "put" else "Leading"
+            print(f"{word} sectors ({this_side}s): "
+                  f"{', '.join(leadership.leading_sectors) or 'none'}", flush=True)
         except Exception as exc:
-            print(f"  ! {symbol} skipped: {exc}", flush=True)
-            continue
-        if row is not None:
-            rows.append(row)
-
-    # Baseline order: TRIGGERED above FORMING; within a bucket, by rank score.
-    rows.sort(key=lambda r: (r.bucket != "TRIGGERED", -r.rank_score))
-
-    # Leading groups and relative strength reorder the list. If any part of
-    # it fails (Yahoo down, say), the baseline order above still ships.
-    leadership = None
-    try:
-        print("Ranking by leading sectors, themes and relative strength...", flush=True)
-        reference = watchlist_ranking.download_reference()
-        liquid = [s for s, f in frames.items() if watchlist_ranking.is_liquid(f)]
-        industry_map = watchlist_ranking.load_industry_map(liquid)
-        leadership = watchlist_ranking.compute_leadership(frames, reference, industry_map)
-        rows = watchlist_ranking.rank_rows(rows, leadership, industry_map)
-        print(
-            f"Leading sectors: {', '.join(leadership.leading_sectors) or 'none'} | "
-            f"themes: {', '.join(leadership.leading_themes) or 'none'}",
-            flush=True,
-        )
-    except Exception as exc:
-        print(f"  ! ranking skipped, keeping baseline order: {exc}", flush=True)
+            print(f"  ! ranking skipped, keeping baseline order: {exc}", flush=True)
+        side_leadership.append((this_side, leadership))
+        rows += side_rows
+    leadership = side_leadership[0][1]
+    funnel = funnels[sides[0]]
 
     as_of = "unknown"
     if frames:
@@ -592,6 +689,8 @@ def build_watchlist(
         "runtime": f"{int(elapsed // 60)}m {int(elapsed % 60)}s",
         "funnel": funnel,
         "leadership": leadership,
+        "side": side,
+        "sides": side_leadership,
     }
     listed_frames = {r.symbol: frames[r.symbol] for r in rows if r.symbol in frames}
     return rows, stats, listed_frames
@@ -660,8 +759,10 @@ def main() -> int:
 
     subject_prefix = os.getenv("REPORT_EMAIL_SUBJECT_PREFIX", "Daily Watchlist")
     top = [r.symbol for r in rows if r.bucket == "TRIGGERED"][:3]
+    side_word = {"call": "CALLS", "put": "PUTS", "both": "CALLS + PUTS"}.get(
+        stats.get("side", "call"), "CALLS")
     subject = (
-        f"{subject_prefix} - {stats['as_of']} - "
+        f"{subject_prefix} - {stats['as_of']} - {side_word} - "
         f"{stats['triggered_count']} triggered, {stats['forming_count']} forming"
         + (f" - top: {', '.join(top)}" if top else "")
     )

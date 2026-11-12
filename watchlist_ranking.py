@@ -88,6 +88,13 @@ REGIMES = {
     1: ("Below 21, above 50 EMA", "Buyers need to step up. Small size, dip-buys at the 50."),
     0: ("Below 8, 21 and 50 EMA", "No new longs. De-risk until the EMAs are reclaimed."),
 }
+# The same ladder, mirrored, for the put side.
+PUT_REGIMES = {
+    3: ("Below 8, 21 and 50 EMA", "Downtrend: breakdowns follow through. Full size puts."),
+    2: ("Above 8, below 21 EMA", "Downtrend intact, bouncing. Half size."),
+    1: ("Above 21, below 50 EMA", "Sellers need to step up. Small size, short rallies into the 50."),
+    0: ("Above 8, 21 and 50 EMA", "No new puts. Cover until the EMAs are lost."),
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -234,7 +241,16 @@ def overlap_leaders(returns: pd.DataFrame, max_leaders: int) -> pd.DataFrame:
     return out
 
 
-def sector_leadership(etf_frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+def _sign(side: str) -> int:
+    """+1 ranks strongest first (calls), -1 ranks weakest first (puts)."""
+    return -1 if side == "put" else 1
+
+
+def sector_leadership(etf_frames: dict[str, pd.DataFrame], side: str = "call") -> pd.DataFrame:
+    """Leading sectors for calls, lagging ones for puts (bottom-5 overlap).
+
+    Ranking runs on sign-flipped returns; the table keeps the real returns.
+    """
     rows = {}
     for sector, etf in SECTOR_ETFS.items():
         frame = etf_frames.get(etf)
@@ -242,7 +258,9 @@ def sector_leadership(etf_frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
             continue
         rows[sector] = {w: _ret(frame["Close"], b) for w, b in WINDOWS.items()}
     table = pd.DataFrame(rows).T.dropna()
-    return overlap_leaders(table, LEADING_SECTORS_MAX)
+    out = overlap_leaders(_sign(side) * table, LEADING_SECTORS_MAX)
+    out[list(WINDOWS)] = table.loc[out.index, list(WINDOWS)]
+    return out
 
 
 def is_liquid(frame: pd.DataFrame) -> bool:
@@ -262,11 +280,14 @@ def stock_returns(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return pd.DataFrame(data).T.dropna()
 
 
-def rs_ratings(returns: pd.DataFrame) -> pd.Series:
-    """RS 1-99: percentile of the weighted 1W/1M/3M return across the liquid universe."""
+def rs_ratings(returns: pd.DataFrame, side: str = "call") -> pd.Series:
+    """RS 1-99: percentile of the weighted 1W/1M/3M return across the liquid universe.
+
+    For puts it is relative weakness: 99 = the weakest name.
+    """
     if returns.empty:
         return pd.Series(dtype=float)
-    blended = sum(returns[w] * wt for w, wt in RS_WEIGHTS.items())
+    blended = _sign(side) * sum(returns[w] * wt for w, wt in RS_WEIGHTS.items())
     return (blended.rank(pct=True) * 98 + 1).round().astype(int)
 
 
@@ -316,18 +337,35 @@ def _ema_state(closes: pd.Series) -> int:
     return 0
 
 
-def market_regime(index_frames: dict[str, pd.DataFrame]) -> Optional[Regime]:
-    """The weaker of SPY and QQQ sets the regime: both must back a long."""
+def market_regime(index_frames: dict[str, pd.DataFrame], side: str = "call") -> Optional[Regime]:
+    """The weaker of SPY and QQQ sets the regime: both must back the trade.
+
+    For puts the state is read on the inverted price (1 / close), so "above
+    all EMAs" there means below all of them on the real chart.
+    """
+    ladder = PUT_REGIMES if side == "put" else REGIMES
     states = {
-        name: _ema_state(frame["Close"])
+        name: _ema_state(1.0 / frame["Close"] if side == "put" else frame["Close"])
         for name, frame in index_frames.items()
         if frame is not None and len(frame) > 60
     }
     if not states:
         return None
     level = min(states.values())
-    label, advice = REGIMES[level]
-    return Regime(level, label, advice, {k: REGIMES[v][0] for k, v in states.items()})
+    label, advice = ladder[level]
+    return Regime(level, label, advice, {k: ladder[v][0] for k, v in states.items()})
+
+
+def trade_side(index_frames: dict[str, pd.DataFrame]) -> str:
+    """"call" when SPY and QQQ are both above their 50 EMA, "put" when both are
+    below it, "both" when they disagree (each side then at small size)."""
+    calls = market_regime(index_frames, "call")
+    puts = market_regime(index_frames, "put")
+    if calls is not None and calls.level >= 1:
+        return "call"
+    if puts is not None and puts.level >= 1:
+        return "put"
+    return "both"
 
 
 # --------------------------------------------------------------------------- #
@@ -350,6 +388,7 @@ class Leadership:
     themes: pd.DataFrame
     regime: Optional[Regime]
     rs: pd.Series
+    side: str = "call"          # "put": sectors are the laggards, rs is weakness
 
     @property
     def leading_sectors(self) -> list[str]:
@@ -364,16 +403,19 @@ def compute_leadership(
     frames: dict[str, pd.DataFrame],
     reference_frames: dict[str, pd.DataFrame],
     industry_map: dict[str, tuple[str, str]],
+    side: str = "call",
 ) -> Leadership:
     returns = stock_returns(frames)
-    sectors = sector_leadership(reference_frames)
+    sectors = sector_leadership(reference_frames, side)
     leading_sectors = list(sectors.index[sectors["leading"]]) if not sectors.empty else []
     return Leadership(
         sectors=sectors,
-        themes=(industry_leadership(returns, industry_map, exclude_sectors=leading_sectors)
+        themes=(industry_leadership(_sign(side) * returns, industry_map,
+                                    exclude_sectors=leading_sectors)
                 if USE_THEMES else pd.DataFrame()),
-        regime=market_regime({k: reference_frames.get(k) for k in ("SPY", "QQQ")}),
-        rs=rs_ratings(returns),
+        regime=market_regime({k: reference_frames.get(k) for k in ("SPY", "QQQ")}, side),
+        rs=rs_ratings(returns, side),
+        side=side,
     )
 
 

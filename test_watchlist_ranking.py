@@ -127,8 +127,8 @@ class RankRowsTest(unittest.TestCase):
         ranked = wr.rank_rows([_row("HC1"), _row("TEC")], leadership, imap)
         stats = {"as_of": "2026-11-11", "funnel": {}, "leadership": leadership}
         html = we.render_html(ranked, stats, {"HC1"}, dw.rules_lines())
-        self.assertIn("Leading groups today", html)
-        self.assertIn("Outside leading groups (1)", html)
+        self.assertIn("CALLS: leading sectors today", html)
+        self.assertIn("CALLS: outside the leading sectors (1)", html)
         self.assertIn("cid:chart-hc1", html)
         self.assertEqual(we.emailed_chart_symbols(ranked, stats), ["HC1"])
 
